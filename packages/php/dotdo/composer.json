@@ -1,0 +1,51 @@
+{
+    "name": "dotdo/dotdo",
+    "description": "DotDo platform SDK for PHP - authentication, connection pooling, and retry logic",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "dotdo",
+        "platform",
+        "sdk",
+        "auth",
+        "connection-pool"
+    ],
+    "authors": [
+        {
+            "name": "DotDo",
+            "email": "dev@dotdo.io"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "ext-json": "*",
+        "dotdo/rpc": "^1.0",
+        "dotdo/capnweb": "^1.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5",
+        "phpstan/phpstan": "^1.10"
+    },
+    "autoload": {
+        "psr-4": {
+            "DotDo\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "DotDo\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit --colors=always",
+        "analyze": "phpstan analyse src --level=8"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.0.x-dev"
+        }
+    }
+}

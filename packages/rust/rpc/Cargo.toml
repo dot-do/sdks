@@ -1,0 +1,37 @@
+[package]
+name = "dotdo-rpc"
+version = "0.1.0"
+edition = "2021"
+description = "DotDo RPC client - High-level RPC abstraction for DotDo services"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/dotdo-ai/capnweb"
+keywords = ["dotdo", "rpc", "client", "async"]
+categories = ["network-programming", "asynchronous"]
+
+[lib]
+name = "dotdo_rpc"
+path = "src/lib.rs"
+
+[features]
+default = ["tokio"]
+tokio = ["dotdo-capnweb/tokio"]
+
+[dependencies]
+# Core Cap'n Web implementation
+dotdo-capnweb = { path = "../capnweb" }
+
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+thiserror = "1"
+
+# Futures utilities
+futures = "0.3"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

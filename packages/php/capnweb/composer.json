@@ -1,0 +1,55 @@
+{
+    "name": "dotdo/capnweb",
+    "description": "Capability-based RPC SDK for PHP with promise pipelining",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "rpc",
+        "capnproto",
+        "websocket",
+        "pipelining",
+        "capability"
+    ],
+    "authors": [
+        {
+            "name": "DotDo",
+            "email": "dev@dotdo.io"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "ext-json": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5",
+        "symfony/yaml": "^7.0",
+        "ratchet/pawl": "^0.4",
+        "phpstan/phpstan": "^1.10"
+    },
+    "autoload": {
+        "psr-4": {
+            "DotDo\\CapnWeb\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "DotDo\\CapnWeb\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit --colors=always",
+        "test:conformance": "phpunit --colors=always --testsuite=conformance",
+        "analyze": "phpstan analyse src tests --level=8"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "phpstan/extension-installer": true
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.0.x-dev"
+        }
+    }
+}

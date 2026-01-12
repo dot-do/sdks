@@ -1,0 +1,28 @@
+name: dotdo
+version: 0.1.0
+description: DotDo Platform SDK for Crystal - auth, connection pooling, and retry logic
+
+authors:
+  - DotDo Team
+
+license: MIT
+
+crystal: ">= 1.10.0"
+
+dependencies:
+  dotdo-capnweb:
+    path: ../capnweb
+  dotdo-rpc:
+    path: ../rpc
+
+development_dependencies:
+  ameba:
+    github: crystal-ameba/ameba
+    version: ~> 1.5
+
+targets:
+  spec:
+    main: spec/dotdo_spec.cr
+
+scripts:
+  test: crystal spec

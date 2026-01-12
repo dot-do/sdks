@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>12.0</LangVersion>
+    <PackageId>DotDo</PackageId>
+    <RootNamespace>DotDo</RootNamespace>
+    <AssemblyName>DotDo</AssemblyName>
+    <Version>0.1.0</Version>
+    <Authors>DotDo Team</Authors>
+    <Description>DotDo platform client for .NET - authentication, connection pooling, and retry logic</Description>
+    <PackageTags>dotdo;platform;client;rpc</PackageTags>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <!-- SDK Source Files -->
+  <ItemGroup>
+    <Compile Include="src/**/*.cs" />
+  </ItemGroup>
+
+  <!-- Dependencies -->
+  <ItemGroup>
+    <!-- JSON serialization -->
+    <PackageReference Include="System.Text.Json" Version="8.0.4" />
+
+    <!-- WebSocket support -->
+    <PackageReference Include="System.Net.WebSockets.Client" Version="4.3.2" />
+
+    <!-- Reference to DotDo.Rpc -->
+    <ProjectReference Include="../rpc/DotDo.Rpc.csproj" />
+  </ItemGroup>
+
+</Project>

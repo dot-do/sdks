@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>12.0</LangVersion>
+    <PackageId>DotDo.CapnWeb</PackageId>
+    <RootNamespace>DotDo.CapnWeb</RootNamespace>
+    <AssemblyName>DotDo.CapnWeb</AssemblyName>
+    <Version>0.1.0</Version>
+    <Authors>DotDo Team</Authors>
+    <Description>Zero-cost capability-based RPC for .NET - LINQ-style pipelining with Select() for server-side mapping</Description>
+    <PackageTags>rpc;capnweb;dotdo;websocket;pipelining;capabilities</PackageTags>
+    <IsPackable>true</IsPackable>
+
+    <!-- Enable test discovery -->
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <!-- SDK Source Files -->
+  <ItemGroup>
+    <Compile Include="src/**/*.cs" />
+  </ItemGroup>
+
+  <!-- Test Files -->
+  <ItemGroup>
+    <Compile Include="tests/**/*.cs" />
+  </ItemGroup>
+
+  <!-- Dependencies -->
+  <ItemGroup>
+    <!-- YAML parsing for conformance tests -->
+    <PackageReference Include="YamlDotNet" Version="15.1.2" />
+
+    <!-- JSON serialization -->
+    <PackageReference Include="System.Text.Json" Version="8.0.4" />
+
+    <!-- Testing framework -->
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
+    <PackageReference Include="xunit" Version="2.8.1" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector" Version="6.0.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+
+    <!-- WebSocket support (included in .NET 8, but explicit for clarity) -->
+    <PackageReference Include="System.Net.WebSockets.Client" Version="4.3.2" />
+  </ItemGroup>
+
+  <!-- Conformance test spec files -->
+  <ItemGroup>
+    <None Include="../../test/conformance/*.yaml" CopyToOutputDirectory="PreserveNewest" LinkBase="conformance" />
+  </ItemGroup>
+
+</Project>

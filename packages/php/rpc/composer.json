@@ -1,0 +1,47 @@
+{
+    "name": "dotdo/rpc",
+    "description": "RPC client utilities for DotDo platform",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "rpc",
+        "client",
+        "dotdo"
+    ],
+    "authors": [
+        {
+            "name": "DotDo",
+            "email": "dev@dotdo.io"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "ext-json": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5",
+        "phpstan/phpstan": "^1.10"
+    },
+    "autoload": {
+        "psr-4": {
+            "DotDo\\Rpc\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "DotDo\\Rpc\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit --colors=always",
+        "analyze": "phpstan analyse src --level=8"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.0.x-dev"
+        }
+    }
+}

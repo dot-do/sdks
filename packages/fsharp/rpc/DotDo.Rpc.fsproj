@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <PackageId>DotDo.Rpc</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>DotDo</Authors>
+    <Description>F# RPC primitives and server-side mapping for DotDo platform</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <WarnOn>3390;$(WarnOn)</WarnOn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="src/Rpc.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- HTTP Client and JSON -->
+    <PackageReference Include="FSharp.Data" Version="6.4.0" />
+    <PackageReference Include="FSharp.SystemTextJson" Version="1.3.13" />
+  </ItemGroup>
+
+</Project>

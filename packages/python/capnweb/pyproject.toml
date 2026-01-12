@@ -1,0 +1,71 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dotdo-capnweb"
+version = "0.1.0"
+description = "DotDo Cap'n Web SDK - Capability-based RPC with Promise Pipelining for Python"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "Cloudflare", email = "workers-sdk@cloudflare.com" }
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet",
+    "Topic :: Software Development :: Libraries",
+    "Typing :: Typed",
+]
+keywords = ["rpc", "websocket", "capability", "pipelining", "cloudflare"]
+dependencies = [
+    "aiohttp>=3.9.0",
+    "websockets>=12.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pyyaml>=6.0",
+]
+dev = [
+    "dotdo-capnweb[test]",
+    "mypy>=1.8.0",
+    "ruff>=0.2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/cloudflare/capnweb"
+Documentation = "https://github.com/cloudflare/capnweb#readme"
+Repository = "https://github.com/cloudflare/capnweb"
+Issues = "https://github.com/cloudflare/capnweb/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/capnweb"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+strict = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]

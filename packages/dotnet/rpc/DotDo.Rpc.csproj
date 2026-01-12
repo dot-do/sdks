@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>12.0</LangVersion>
+    <PackageId>DotDo.Rpc</PackageId>
+    <RootNamespace>DotDo.Rpc</RootNamespace>
+    <AssemblyName>DotDo.Rpc</AssemblyName>
+    <Version>0.1.0</Version>
+    <Authors>DotDo Team</Authors>
+    <Description>RPC client for DotDo platform - LINQ-style pipelining with Select() for server-side mapping</Description>
+    <PackageTags>rpc;dotdo;websocket;pipelining</PackageTags>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <!-- SDK Source Files -->
+  <ItemGroup>
+    <Compile Include="src/**/*.cs" />
+  </ItemGroup>
+
+  <!-- Dependencies -->
+  <ItemGroup>
+    <!-- JSON serialization -->
+    <PackageReference Include="System.Text.Json" Version="8.0.4" />
+
+    <!-- WebSocket support -->
+    <PackageReference Include="System.Net.WebSockets.Client" Version="4.3.2" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,38 @@
+{
+  "name": "@dotdo/rpc",
+  "version": "0.1.0",
+  "description": "DotDo RPC Client - Type-safe remote procedure calls",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "rpc",
+    "proxy",
+    "capnproto",
+    "dotdo"
+  ],
+  "author": "DotDo",
+  "license": "MIT",
+  "dependencies": {
+    "@dotdo/capnweb": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  }
+}

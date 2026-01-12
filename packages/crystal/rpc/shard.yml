@@ -1,0 +1,26 @@
+name: dotdo-rpc
+version: 0.1.0
+description: DotDo RPC utilities for Crystal - server-side remap and data transformations
+
+authors:
+  - DotDo Team
+
+license: MIT
+
+crystal: ">= 1.10.0"
+
+dependencies:
+  dotdo-capnweb:
+    path: ../capnweb
+
+development_dependencies:
+  ameba:
+    github: crystal-ameba/ameba
+    version: ~> 1.5
+
+targets:
+  spec:
+    main: spec/rpc_spec.cr
+
+scripts:
+  test: crystal spec
