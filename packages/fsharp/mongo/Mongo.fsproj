@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>DotDo.Mongo</RootNamespace>
+    <AssemblyName>DotDo.Mongo</AssemblyName>
+    <Version>0.1.0</Version>
+    <Authors>DotDo</Authors>
+    <Description>F# MongoDB SDK with functional-first API, computation expressions, and railway-oriented error handling.</Description>
+    <PackageTags>mongodb;fsharp;functional;async;nosql</PackageTags>
+    <PackageId>DotDo.Mongo</PackageId>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="src/ObjectId.fs" />
+    <Compile Include="src/BsonValue.fs" />
+    <Compile Include="src/MongoError.fs" />
+    <Compile Include="src/Document.fs" />
+    <Compile Include="src/Filters.fs" />
+    <Compile Include="src/Updates.fs" />
+    <Compile Include="src/Sorts.fs" />
+    <Compile Include="src/Projections.fs" />
+    <Compile Include="src/MongoCollection.fs" />
+    <Compile Include="src/MongoDatabase.fs" />
+    <Compile Include="src/MongoClient.fs" />
+    <Compile Include="src/Mongo.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" Version="8.0.0" />
+    <PackageReference Include="System.Text.Json" Version="8.0.0" />
+  </ItemGroup>
+
+
+</Project>

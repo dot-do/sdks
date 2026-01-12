@@ -1,0 +1,58 @@
+{
+    "name": "kafka.do/sdk",
+    "description": "Kafka-compatible client for the .do platform with producer/consumer interfaces",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "kafka",
+        "messaging",
+        "streaming",
+        "producer",
+        "consumer",
+        "events",
+        "dotdo"
+    ],
+    "authors": [
+        {
+            "name": "DotDo",
+            "email": "dev@dotdo.io"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "ext-json": "*",
+        "capnweb.do/sdk": "^1.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5",
+        "phpstan/phpstan": "^1.10"
+    },
+    "autoload": {
+        "psr-4": {
+            "DotDo\\Kafka\\": "src/"
+        },
+        "files": [
+            "src/KafkaClient.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "DotDo\\Kafka\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit --colors=always",
+        "analyze": "phpstan analyse src tests --level=8"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "phpstan/extension-installer": true
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.0.x-dev"
+        }
+    }
+}

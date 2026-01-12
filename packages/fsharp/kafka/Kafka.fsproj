@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>DotDo.Kafka</RootNamespace>
+    <AssemblyName>DotDo.Kafka</AssemblyName>
+    <Version>0.1.0</Version>
+    <Authors>DotDo</Authors>
+    <Description>F# Kafka SDK with functional-first API, AsyncSeq streaming, and railway-oriented error handling.</Description>
+    <PackageTags>kafka;fsharp;functional;async;streaming;events</PackageTags>
+    <PackageId>DotDo.Kafka</PackageId>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="src/KafkaError.fs" />
+    <Compile Include="src/KafkaConfig.fs" />
+    <Compile Include="src/KafkaRecord.fs" />
+    <Compile Include="src/Producer.fs" />
+    <Compile Include="src/Consumer.fs" />
+    <Compile Include="src/Admin.fs" />
+    <Compile Include="src/Kafka.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" Version="8.0.0" />
+    <PackageReference Include="System.Text.Json" Version="8.0.0" />
+  </ItemGroup>
+
+
+</Project>
