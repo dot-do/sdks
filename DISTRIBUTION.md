@@ -4,166 +4,146 @@ This document covers package distribution across all supported languages and pac
 
 ## Domain Assets
 
-| Domain | Purpose |
-|--------|---------|
-| `platform.do` | Primary domain for domain-based package namespaces |
-| `dot-do.com` | Corporate/marketing site |
-| `do.org.ai` | AI-focused services |
+We own hundreds of `.do` domains. Each domain maps directly to a package:
 
-## Package Manager Overview
+| Domain | Purpose | Package Pattern |
+|--------|---------|-----------------|
+| `platform.do` | Core platform | `platform.do` / `platform-do` |
+| `rpc.do` | RPC client | `rpc.do` / `rpc-do` |
+| `sdk.do` | SDK utilities | `sdk.do` / `sdk-do` |
+| `mongo.do` | MongoDB client | `mongo.do` / `mongo-do` |
+| `database.do` | Database ops | `database.do` / `database-do` |
+| `agents.do` | AI agents | `agents.do` / `agents-do` |
+| `functions.do` | Serverless | `functions.do` / `functions-do` |
+| `workflows.do` | Workflows | `workflows.do` / `workflows-do` |
 
-### Registries WITH Domain-Based Namespaces
+## Package Naming Strategy
 
-These registries use actual domain names for namespacing. We use `platform.do` → `do.platform`.
+### Registries That Allow Dots (Use `{name}.do`)
 
-| Language | Registry | URL | Namespace Format | Our Namespace |
-|----------|----------|-----|------------------|---------------|
-| Go | Go Modules | https://pkg.go.dev | `domain/path` | `go.platform.do/*` |
-| Java | Maven Central | https://central.sonatype.com | `groupId:artifactId` | `do.platform:*` |
-| Kotlin | Maven Central | https://central.sonatype.com | `groupId:artifactId` | `do.platform:*` |
-| Scala | Maven Central | https://central.sonatype.com | `org::package` | `do.platform::*` |
-| Clojure | Clojars | https://clojars.org | `group/artifact` | `do.platform/*` |
+| Registry | Example Package | Install Command |
+|----------|-----------------|-----------------|
+| **npm** | `rpc.do` | `npm install rpc.do` |
+| **RubyGems** | `rpc.do` | `gem install rpc.do` |
+| **NuGet** | `Rpc.Do` | `dotnet add package Rpc.Do` |
+| **Packagist** | `rpc.do/sdk` | `composer require rpc.do/sdk` |
 
-### Registries WITH Name-Based Namespaces
+### Registries That Don't Allow Dots (Use `{name}-do` or `{name}_do`)
 
-These registries have scoped packages but the scope is just a registered name, not a domain.
+| Registry | Example Package | Install Command |
+|----------|-----------------|-----------------|
+| **PyPI** | `rpc-do` | `pip install rpc-do` |
+| **crates.io** | `rpc-do` | `cargo add rpc-do` |
+| **pub.dev** | `rpc_do` | `dart pub add rpc_do` |
+| **Hex** | `rpc_do` | `mix deps.get` with `{:rpc_do, "~> 0.1"}` |
+| **Shards** | `rpc-do` | `shards install rpc-do` |
+| **Nimble** | `rpcdo` | `nimble install rpcdo` |
 
-| Language | Registry | URL | Namespace Format | Our Namespace |
-|----------|----------|-----|------------------|---------------|
-| TypeScript/JS | npm | https://www.npmjs.com | `@org/package` | `@dotdo/*` |
-| Deno | JSR | https://jsr.io | `@scope/package` | `@dotdo/*` |
-| C#/.NET | NuGet | https://www.nuget.org | `Org.Package` | `DotDo.*` |
-| F# | NuGet | https://www.nuget.org | `Org.Package` | `DotDo.*` |
-| PHP | Packagist | https://packagist.org | `vendor/package` | `dotdo/*` |
+### Domain-Based Registries (Use actual domain)
 
-### Registries WITHOUT Namespaces
+| Registry | Pattern | Example |
+|----------|---------|---------|
+| **Go Modules** | `go.{name}.do/*` | `go get go.rpc.do/sdk` |
+| **Maven Central** | `do.{name}:*` | `do.rpc:sdk` |
+| **Clojars** | `do.{name}/*` | `do.rpc/sdk` |
 
-These registries use flat naming. We need to register each package name individually.
+## Complete Package Matrix
 
-| Language | Registry | URL | Convention | Our Prefix |
-|----------|----------|-----|------------|------------|
-| Python | PyPI | https://pypi.org | `prefix-package` | `dotdo-*` |
-| Rust | crates.io | https://crates.io | `prefix-package` | `dotdo-*` |
-| Ruby | RubyGems | https://rubygems.org | `prefix-package` | `dotdo-*` |
-| Swift | Swift Package Index | https://swiftpackageindex.com | `PrefixPackage` | `DotDo*` |
-| Dart | pub.dev | https://pub.dev | `prefix_package` | `dotdo_*` |
-| Elixir | Hex | https://hex.pm | `:prefix_package` | `:dotdo_*` |
-| Crystal | Shards | https://shardbox.org | `prefix-package` | `dotdo-*` |
-| Nim | Nimble | https://nimble.directory | `prefixpackage` | `dotdo*` |
-
-## Complete Package Names
-
-### Layer 1: Protocol (`capnweb`)
+### Core RPC Package (`rpc.do`)
 
 | Language | Package Name | Install Command |
 |----------|--------------|-----------------|
-| TypeScript | `@dotdo/capnweb` | `npm install @dotdo/capnweb` |
-| Deno | `@dotdo/capnweb` | `deno add @dotdo/capnweb` |
-| Python | `dotdo-capnweb` | `pip install dotdo-capnweb` |
-| Rust | `dotdo-capnweb` | `cargo add dotdo-capnweb` |
-| Go | `go.platform.do/capnweb` | `go get go.platform.do/capnweb` |
-| Ruby | `dotdo-capnweb` | `gem install dotdo-capnweb` |
-| Java | `do.platform:capnweb` | `implementation("do.platform:capnweb:0.1.0")` |
-| Kotlin | `do.platform:capnweb` | `implementation("do.platform:capnweb:0.1.0")` |
-| Scala | `do.platform::capnweb` | `"do.platform" %% "capnweb" % "0.1.0"` |
-| C# | `DotDo.CapnWeb` | `dotnet add package DotDo.CapnWeb` |
-| F# | `DotDo.CapnWeb` | `dotnet add package DotDo.CapnWeb` |
-| PHP | `dotdo/capnweb` | `composer require dotdo/capnweb` |
-| Swift | `DotDoCapnWeb` | `.package(url: "https://github.com/dot-do/capnweb-swift")` |
-| Dart | `dotdo_capnweb` | `dart pub add dotdo_capnweb` |
-| Elixir | `:dotdo_capnweb` | `{:dotdo_capnweb, "~> 0.1.0"}` |
-| Clojure | `do.platform/capnweb` | `do.platform/capnweb {:mvn/version "0.1.0"}` |
-| Crystal | `dotdo-capnweb` | `shards install dotdo-capnweb` |
-| Nim | `dotdocapnweb` | `nimble install dotdocapnweb` |
-
-### Layer 2: RPC Client (`rpc`)
-
-| Language | Package Name | Install Command |
-|----------|--------------|-----------------|
-| TypeScript | `@dotdo/rpc` | `npm install @dotdo/rpc` |
+| TypeScript | `rpc.do` | `npm install rpc.do` |
 | Deno | `@dotdo/rpc` | `deno add @dotdo/rpc` |
-| Python | `dotdo-rpc` | `pip install dotdo-rpc` |
-| Rust | `dotdo-rpc` | `cargo add dotdo-rpc` |
-| Go | `go.platform.do/rpc` | `go get go.platform.do/rpc` |
-| Ruby | `dotdo-rpc` | `gem install dotdo-rpc` |
-| Java | `do.platform:rpc` | `implementation("do.platform:rpc:0.1.0")` |
-| Kotlin | `do.platform:rpc` | `implementation("do.platform:rpc:0.1.0")` |
-| Scala | `do.platform::rpc` | `"do.platform" %% "rpc" % "0.1.0"` |
-| C# | `DotDo.Rpc` | `dotnet add package DotDo.Rpc` |
-| F# | `DotDo.Rpc` | `dotnet add package DotDo.Rpc` |
-| PHP | `dotdo/rpc` | `composer require dotdo/rpc` |
-| Swift | `DotDoRpc` | `.package(url: "https://github.com/dot-do/rpc-swift")` |
-| Dart | `dotdo_rpc` | `dart pub add dotdo_rpc` |
-| Elixir | `:dotdo_rpc` | `{:dotdo_rpc, "~> 0.1.0"}` |
-| Clojure | `do.platform/rpc` | `do.platform/rpc {:mvn/version "0.1.0"}` |
-| Crystal | `dotdo-rpc` | `shards install dotdo-rpc` |
-| Nim | `dotdorpc` | `nimble install dotdorpc` |
+| Python | `rpc-do` | `pip install rpc-do` |
+| Rust | `rpc-do` | `cargo add rpc-do` |
+| Go | `go.rpc.do` | `go get go.rpc.do` |
+| Ruby | `rpc.do` | `gem install rpc.do` |
+| Java | `do.rpc:sdk` | `implementation("do.rpc:sdk:0.1.0")` |
+| Kotlin | `do.rpc:sdk` | `implementation("do.rpc:sdk:0.1.0")` |
+| Scala | `do.rpc::sdk` | `"do.rpc" %% "sdk" % "0.1.0"` |
+| C# | `Rpc.Do` | `dotnet add package Rpc.Do` |
+| F# | `Rpc.Do` | `dotnet add package Rpc.Do` |
+| PHP | `rpc.do/sdk` | `composer require rpc.do/sdk` |
+| Swift | `RpcDo` | `.package(url: "https://github.com/dot-do/rpc")` |
+| Dart | `rpc_do` | `dart pub add rpc_do` |
+| Elixir | `:rpc_do` | `{:rpc_do, "~> 0.1.0"}` |
+| Clojure | `do.rpc/sdk` | `do.rpc/sdk {:mvn/version "0.1.0"}` |
+| Crystal | `rpc-do` | `shards install rpc-do` |
+| Nim | `rpcdo` | `nimble install rpcdo` |
 
-### Layer 3: Platform (`dotdo`)
+### MongoDB Client (`mongo.do`)
 
 | Language | Package Name | Install Command |
 |----------|--------------|-----------------|
-| TypeScript | `dotdo` | `npm install dotdo` |
-| Deno | `dotdo` | `deno add dotdo` |
-| Python | `dotdo` | `pip install dotdo` |
-| Rust | `dotdo` | `cargo add dotdo` |
-| Go | `go.platform.do/dotdo` | `go get go.platform.do/dotdo` |
-| Ruby | `dotdo` | `gem install dotdo` |
-| Java | `do.platform:core` | `implementation("do.platform:core:0.1.0")` |
-| Kotlin | `do.platform:core` | `implementation("do.platform:core:0.1.0")` |
-| Scala | `do.platform::core` | `"do.platform" %% "core" % "0.1.0"` |
-| C# | `DotDo` | `dotnet add package DotDo` |
-| F# | `DotDo` | `dotnet add package DotDo` |
-| PHP | `dotdo/dotdo` | `composer require dotdo/dotdo` |
-| Swift | `DotDo` | `.package(url: "https://github.com/dot-do/dotdo-swift")` |
-| Dart | `dotdo` | `dart pub add dotdo` |
-| Elixir | `:dotdo` | `{:dotdo, "~> 0.1.0"}` |
-| Clojure | `do.platform/core` | `do.platform/core {:mvn/version "0.1.0"}` |
-| Crystal | `dotdo` | `shards install dotdo` |
-| Nim | `dotdo` | `nimble install dotdo` |
+| TypeScript | `mongo.do` | `npm install mongo.do` |
+| Python | `mongo-do` | `pip install mongo-do` |
+| Rust | `mongo-do` | `cargo add mongo-do` |
+| Go | `go.mongo.do` | `go get go.mongo.do` |
+| Ruby | `mongo.do` | `gem install mongo.do` |
+| Java | `do.mongo:sdk` | `implementation("do.mongo:sdk:0.1.0")` |
+| C# | `Mongo.Do` | `dotnet add package Mongo.Do` |
 
-## Future Domain Packages
+### Database Client (`database.do`)
 
-These packages will live in separate repositories and provide API-compatible interfaces to popular services.
+| Language | Package Name | Install Command |
+|----------|--------------|-----------------|
+| TypeScript | `database.do` | `npm install database.do` |
+| Python | `database-do` | `pip install database-do` |
+| Go | `go.database.do` | `go get go.database.do` |
+| Java | `do.database:sdk` | `implementation("do.database:sdk:0.1.0")` |
 
-| Package | TypeScript | Python | Go | Java |
-|---------|------------|--------|-----|------|
-| MongoDB | `@dotdo/mongo` | `dotdo-mongo` | `go.platform.do/mongo` | `do.platform:mongo` |
-| Kafka | `@dotdo/kafka` | `dotdo-kafka` | `go.platform.do/kafka` | `do.platform:kafka` |
-| Redis | `@dotdo/redis` | `dotdo-redis` | `go.platform.do/redis` | `do.platform:redis` |
-| Database | `@dotdo/db` | `dotdo-db` | `go.platform.do/db` | `do.platform:db` |
-| Agents | `@dotdo/agents` | `dotdo-agents` | `go.platform.do/agents` | `do.platform:agents` |
+## Repository Structure
+
+Each `.do` domain gets its own repository, all scaffolded from the template in `dot-do/rpc`:
+
+```
+github.com/dot-do/
+├── rpc/                    # THIS REPO - template + core RPC
+│   ├── template/           # Scaffold for new .do repos
+│   │   ├── packages/       # All 17 language stubs
+│   │   ├── scripts/        # Build, test, publish scripts
+│   │   ├── .github/        # CI/CD workflows
+│   │   └── test/           # Conformance test specs
+│   ├── packages/           # rpc.do packages
+│   │   ├── typescript/     # rpc.do (npm)
+│   │   ├── python/         # rpc-do (PyPI)
+│   │   └── ...
+│   └── cli/                # `npx dotdo init mongo`
+│
+├── mongo/                  # mongo.do - scaffolded from template
+│   ├── packages/
+│   │   ├── typescript/     # mongo.do (npm)
+│   │   ├── python/         # mongo-do (PyPI)
+│   │   └── ...
+│   └── test/
+│
+├── database/               # database.do
+├── agents/                 # agents.do
+├── functions/              # functions.do
+└── workflows/              # workflows.do
+```
 
 ## Registry Setup Requirements
 
 ### Domain-Based Registries
 
-#### Go Modules (`go.platform.do`)
+#### Go Modules (`go.{name}.do`)
 
-Set up vanity imports by serving a meta tag at `go.platform.do`:
+Each domain needs vanity import setup. Example Cloudflare Worker for `go.rpc.do`:
 
-```html
-<!-- https://go.platform.do/capnweb?go-get=1 -->
-<meta name="go-import" content="go.platform.do/capnweb git https://github.com/dot-do/rpc">
-```
-
-Options:
-1. **Static hosting**: Serve HTML files with meta tags
-2. **Cloudflare Workers**: Simple worker to serve meta tags
-3. **GitHub Pages**: Host at `dot-do.github.io` with custom domain
-
-Example Cloudflare Worker:
 ```javascript
 export default {
   async fetch(request) {
     const url = new URL(request.url);
-    const pkg = url.pathname.split('/')[1] || 'rpc';
+    const pkg = url.pathname.split('/')[1] || '';
+    const repo = pkg || 'rpc';
 
     return new Response(`<!DOCTYPE html>
 <html>
 <head>
-<meta name="go-import" content="go.platform.do/${pkg} git https://github.com/dot-do/${pkg}">
-<meta http-equiv="refresh" content="0; url=https://pkg.go.dev/go.platform.do/${pkg}">
+<meta name="go-import" content="go.rpc.do${pkg ? '/' + pkg : ''} git https://github.com/dot-do/rpc">
+<meta http-equiv="refresh" content="0; url=https://pkg.go.dev/go.rpc.do${pkg ? '/' + pkg : ''}">
 </head>
 </html>`, {
       headers: { 'Content-Type': 'text/html' }
@@ -172,134 +152,33 @@ export default {
 }
 ```
 
-#### Maven Central (`do.platform`)
+#### Maven Central (`do.{name}`)
 
-To publish to Maven Central with `do.platform` group ID:
-
-1. **Prove domain ownership**: Add TXT record to `platform.do`
-   ```
-   TXT  _sonatype  OSSRH-XXXXXX
-   ```
-2. **Create Sonatype account**: https://central.sonatype.com
-3. **Request namespace**: Claim `do.platform` group ID
-4. **Sign packages**: Set up GPG signing
-
-#### Clojars (`do.platform`)
-
-Clojars doesn't require domain verification. Just use the group ID:
-```clojure
-;; deps.edn
-{:deps {do.platform/rpc {:mvn/version "0.1.0"}}}
-```
+For each domain, prove ownership and claim namespace:
+1. Add TXT record: `TXT _sonatype OSSRH-XXXXXX` to `rpc.do`
+2. Claim `do.rpc` group ID at https://central.sonatype.com
 
 ### Name-Based Registries
 
-#### npm (`@dotdo`)
+#### npm (`{name}.do`)
 
 ```bash
-# Create organization (requires npm account)
-npm org create dotdo
-
-# Publish scoped package
-npm publish --access public
+# Package names with dots are allowed
+npm init --scope=@dotdo  # For scoped packages
+npm publish              # For rpc.do, mongo.do, etc.
 ```
 
-#### PyPI (`dotdo-*`)
+#### PyPI (`{name}-do`)
 
 ```bash
-# Register account at pypi.org
-# Claim package names by publishing
-
 pip install build twine
 python -m build
 twine upload dist/*
 ```
 
-**Reserved names to claim early:**
-- `dotdo`
-- `dotdo-capnweb`
-- `dotdo-rpc`
-- `dotdo-db`
-- `dotdo-mongo`
-- `dotdo-kafka`
-- `dotdo-redis`
-- `dotdo-agents`
-
-#### crates.io (`dotdo-*`)
-
-```bash
-# Login with GitHub
-cargo login
-
-# Publish
-cargo publish
-```
-
-**Reserved names to claim early:** Same as PyPI
-
-#### RubyGems (`dotdo-*`)
-
-```bash
-gem push dotdo-capnweb-0.1.0.gem
-```
-
-#### NuGet (`DotDo.*`)
-
-```bash
-# Create account at nuget.org
-# Reserve prefix "DotDo." in account settings
-
-dotnet nuget push DotDo.CapnWeb.0.1.0.nupkg --api-key YOUR_KEY --source https://api.nuget.org/v3/index.json
-```
-
-#### Packagist (`dotdo/*`)
-
-1. Create account at https://packagist.org
-2. Submit GitHub repository URL
-3. Packagist auto-detects `composer.json`
-
-#### Hex (`:dotdo_*`)
-
-```bash
-mix hex.publish
-```
-
-#### pub.dev (`dotdo_*`)
-
-```bash
-dart pub publish
-```
-
-## GitHub Repository Structure
-
-```
-github.com/dot-do/
-├── rpc/                    # This repo - core RPC packages (all 17 languages)
-│   ├── packages/
-│   │   ├── typescript/
-│   │   │   ├── capnweb/    # @dotdo/capnweb
-│   │   │   ├── rpc/        # @dotdo/rpc
-│   │   │   └── dotdo/      # dotdo
-│   │   ├── python/
-│   │   └── ...
-│   └── ...
-│
-├── mongo/                  # MongoDB-compatible client
-│   ├── packages/
-│   │   ├── typescript/     # @dotdo/mongo
-│   │   ├── python/         # dotdo-mongo
-│   │   └── ...
-│   └── ...
-│
-├── kafka/                  # Kafka-compatible client
-├── redis/                  # Redis-compatible client
-├── db/                     # Database operations
-└── agents/                 # AI agent orchestration
-```
-
 ## CI/CD Publishing
 
-### GitHub Actions Workflow
+Each repo uses the same GitHub Actions workflow:
 
 ```yaml
 name: Publish Packages
@@ -314,7 +193,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-      - run: npm publish --access public
+      - run: |
+          cd packages/typescript
+          npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -324,6 +205,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
       - run: |
+          cd packages/python
           pip install build twine
           python -m build
           twine upload dist/*
@@ -335,7 +217,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: cargo publish
+      - run: |
+          cd packages/rust
+          cargo publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_TOKEN }}
 
@@ -347,48 +231,84 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
-      - run: ./gradlew publish
+      - run: |
+          cd packages/java
+          ./gradlew publish
         env:
           MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
           MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
           GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
-  # ... additional jobs for each registry
+  publish-nuget:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+      - run: |
+          cd packages/dotnet
+          dotnet pack -c Release
+          dotnet nuget push **/*.nupkg --api-key ${{ secrets.NUGET_KEY }} --source https://api.nuget.org/v3/index.json
+
+  publish-rubygems:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+      - run: |
+          cd packages/ruby
+          gem build *.gemspec
+          gem push *.gem
+        env:
+          GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_KEY }}
+
+  publish-hex:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.15'
+          otp-version: '26'
+      - run: |
+          cd packages/elixir
+          mix hex.publish --yes
+        env:
+          HEX_API_KEY: ${{ secrets.HEX_KEY }}
+
+  publish-pub:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - run: |
+          cd packages/dart
+          dart pub publish --force
 ```
 
-## Package Name Reservation Checklist
+## Quick Reference
 
-Priority order for claiming package names:
+### Package Naming by Registry Type
 
-### Immediate (Before Public Announcement)
+| Type | Registries | Pattern | Example |
+|------|------------|---------|---------|
+| **Dots allowed** | npm, RubyGems, NuGet, Packagist | `{name}.do` | `rpc.do` |
+| **Hyphens only** | PyPI, crates.io, Shards | `{name}-do` | `rpc-do` |
+| **Underscores** | pub.dev, Hex | `{name}_do` | `rpc_do` |
+| **No separator** | Nimble | `{name}do` | `rpcdo` |
+| **Domain-based** | Go, Maven, Clojars | `go.{name}.do`, `do.{name}:*` | `go.rpc.do` |
 
-- [ ] npm: `@dotdo` organization + `dotdo` package
-- [ ] PyPI: `dotdo`, `dotdo-capnweb`, `dotdo-rpc`
-- [ ] crates.io: `dotdo`, `dotdo-capnweb`, `dotdo-rpc`
-- [ ] NuGet: Reserve `DotDo.` prefix
-- [ ] Maven Central: Claim `do.platform` namespace (prove `platform.do` ownership)
+### Domain → Package Mapping
 
-### Before First Release
-
-- [ ] RubyGems: `dotdo`, `dotdo-capnweb`, `dotdo-rpc`
-- [ ] Packagist: `dotdo/*`
-- [ ] pub.dev: `dotdo`, `dotdo_capnweb`, `dotdo_rpc`
-- [ ] Hex: `dotdo`, `dotdo_capnweb`, `dotdo_rpc`
-- [ ] Clojars: `do.platform/*`
-- [ ] JSR: `@dotdo/*`
-
-### Domain Setup
-
-- [ ] `go.platform.do` - Go vanity imports (Cloudflare Worker or static)
-- [ ] `platform.do` TXT record - Maven Central verification
-- [ ] `docs.platform.do` - Documentation
-- [ ] `status.platform.do` - Status page
-
-## Quick Reference: Namespace Types
-
-| Type | Registries | Our Pattern |
-|------|------------|-------------|
-| **Domain-based** | Go, Maven, Clojars | `do.platform:*` / `go.platform.do/*` |
-| **Name-scoped** | npm, JSR, NuGet, Packagist | `@dotdo/*` / `DotDo.*` / `dotdo/*` |
-| **Flat naming** | PyPI, crates.io, RubyGems, pub.dev, Hex, Shards, Nimble | `dotdo-*` / `dotdo_*` |
+```
+{name}.do domain
+    ├── npm:        {name}.do
+    ├── PyPI:       {name}-do
+    ├── crates.io:  {name}-do
+    ├── RubyGems:   {name}.do
+    ├── NuGet:      {Name}.Do
+    ├── Maven:      do.{name}:sdk
+    ├── Go:         go.{name}.do
+    ├── pub.dev:    {name}_do
+    ├── Hex:        {name}_do
+    └── Packagist:  {name}.do/sdk
+```
