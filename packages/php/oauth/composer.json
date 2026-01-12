@@ -1,0 +1,15 @@
+{
+    "name": "dotdo/oauth",
+    "description": "OAuth device flow SDK for .do APIs",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "DotDo\\OAuth\\": "src/"
+        }
+    },
+    "require": {
+        "php": ">=8.0",
+        "guzzlehttp/guzzle": "^7.0"
+    }
+}

@@ -1,0 +1,15 @@
+name: oauth-do
+version: 0.1.0
+
+authors:
+  - .do Team
+
+description: OAuth device flow SDK for .do APIs
+
+crystal: ">= 1.0.0"
+
+license: MIT
+
+targets:
+  oauth_do:
+    main: src/oauth_do.cr

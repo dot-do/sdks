@@ -1,0 +1,52 @@
+[package]
+name = "oauth-do"
+version = "0.1.0"
+edition = "2021"
+description = "Simple, secure OAuth authentication CLI for humans and AI agents"
+authors = ["apis.do"]
+license = "MIT"
+repository = "https://github.com/drivly/oauth.do"
+keywords = ["oauth", "authentication", "cli", "device-flow"]
+categories = ["authentication", "command-line-utilities"]
+readme = "README.md"
+
+[[bin]]
+name = "oauth-do"
+path = "src/main.rs"
+
+[lib]
+name = "oauth_do"
+path = "src/lib.rs"
+
+[dependencies]
+# CLI framework
+clap = { version = "4.5", features = ["derive"] }
+
+# Async runtime
+tokio = { version = "1.41", features = ["full"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Secure credential storage
+keyring = "3.6"
+
+# Home directory
+dirs = "5.0"
+
+# Open browser
+open = "5.3"
+
+# Terminal colors
+colored = "2.2"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+[dev-dependencies]
+tokio-test = "0.4"

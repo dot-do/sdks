@@ -649,6 +649,7 @@ if should_publish_lang "rust"; then
   publish_rust "capnweb" "$ROOT_DIR/packages/rust/capnweb" "capnweb"
   publish_rust "rpc" "$ROOT_DIR/packages/rust/rpc" "rpc-do"
   publish_rust "dotdo" "$ROOT_DIR/packages/rust/dotdo" "dotdo"
+  publish_rust "oauth" "$ROOT_DIR/packages/rust/oauth" "oauth-do"
 fi
 
 # Go packages
@@ -666,6 +667,7 @@ if should_publish_lang "ruby"; then
   publish_ruby "capnweb" "$ROOT_DIR/packages/ruby/capnweb" "capnweb"
   publish_ruby "rpc" "$ROOT_DIR/packages/ruby/rpc" "rpc-do"
   publish_ruby "dotdo" "$ROOT_DIR/packages/ruby/dotdo" "dotdo"
+  publish_ruby "oauth" "$ROOT_DIR/packages/ruby/oauth" "oauth-do"
 fi
 
 # C# packages
@@ -674,6 +676,7 @@ if should_publish_lang "csharp"; then
   publish_csharp "capnweb" "$ROOT_DIR/packages/dotnet/capnweb" "CapnWeb"
   publish_csharp "rpc" "$ROOT_DIR/packages/dotnet/rpc" "RpcDo"
   publish_csharp "dotdo" "$ROOT_DIR/packages/dotnet/dotdo" "DotDo"
+  publish_csharp "oauth" "$ROOT_DIR/packages/dotnet/oauth" "OAuthDo"
 fi
 
 # F# packages
@@ -682,6 +685,7 @@ if should_publish_lang "fsharp"; then
   publish_fsharp "capnweb" "$ROOT_DIR/packages/fsharp/capnweb" "CapnWeb.FSharp"
   publish_fsharp "rpc" "$ROOT_DIR/packages/fsharp/rpc" "RpcDo.FSharp"
   publish_fsharp "dotdo" "$ROOT_DIR/packages/fsharp/dotdo" "DotDo.FSharp"
+  publish_fsharp "oauth" "$ROOT_DIR/packages/fsharp/oauth" "OAuthDo.FSharp"
 fi
 
 # Java packages
@@ -690,6 +694,7 @@ if should_publish_lang "java"; then
   publish_java "capnweb" "$ROOT_DIR/packages/java/capnweb" "do.capnweb:capnweb"
   publish_java "rpc" "$ROOT_DIR/packages/java/rpc" "do.rpc:rpc"
   publish_java "dotdo" "$ROOT_DIR/packages/java/dotdo" "dev.dotdo:dotdo"
+  publish_java "oauth" "$ROOT_DIR/packages/java/oauth" "do.oauth:oauth"
 fi
 
 # Kotlin packages
@@ -698,6 +703,7 @@ if should_publish_lang "kotlin"; then
   publish_kotlin "capnweb" "$ROOT_DIR/packages/kotlin/capnweb" "do.capnweb:capnweb"
   publish_kotlin "rpc" "$ROOT_DIR/packages/kotlin/rpc" "do.rpc:rpc"
   publish_kotlin "dotdo" "$ROOT_DIR/packages/kotlin/dotdo" "dev.dotdo:dotdo"
+  publish_kotlin "oauth" "$ROOT_DIR/packages/kotlin/oauth" "do.oauth:oauth"
 fi
 
 # Scala packages
@@ -706,6 +712,7 @@ if should_publish_lang "scala"; then
   publish_scala "capnweb" "$ROOT_DIR/packages/scala/capnweb" "do.capnweb:capnweb"
   publish_scala "rpc" "$ROOT_DIR/packages/scala/rpc" "do.rpc:rpc"
   publish_scala "dotdo" "$ROOT_DIR/packages/scala/dotdo" "dev.dotdo:dotdo"
+  publish_scala "oauth" "$ROOT_DIR/packages/scala/oauth" "do.oauth:oauth"
 fi
 
 # Swift packages
@@ -714,6 +721,7 @@ if should_publish_lang "swift"; then
   publish_swift "capnweb" "$ROOT_DIR/packages/swift/capnweb" "capnweb"
   publish_swift "rpc" "$ROOT_DIR/packages/swift/rpc" "rpc-do"
   publish_swift "dotdo" "$ROOT_DIR/packages/swift/dotdo" "dotdo"
+  publish_swift "oauth" "$ROOT_DIR/packages/swift/oauth" "oauth-do"
 fi
 
 # Dart packages
@@ -722,6 +730,7 @@ if should_publish_lang "dart"; then
   publish_dart "capnweb" "$ROOT_DIR/packages/dart/capnweb" "capnweb"
   publish_dart "rpc" "$ROOT_DIR/packages/dart/rpc" "rpc_do"
   publish_dart "dotdo" "$ROOT_DIR/packages/dart/dotdo" "dotdo"
+  publish_dart "oauth" "$ROOT_DIR/packages/dart/oauth" "oauth_do"
 fi
 
 # Elixir packages
@@ -730,6 +739,7 @@ if should_publish_lang "elixir"; then
   publish_elixir "capnweb" "$ROOT_DIR/packages/elixir/capnweb" "capnweb"
   publish_elixir "rpc" "$ROOT_DIR/packages/elixir/rpc" "rpc_do"
   publish_elixir "dotdo" "$ROOT_DIR/packages/elixir/dotdo" "dotdo"
+  publish_elixir "oauth" "$ROOT_DIR/packages/elixir/oauth" "oauth_do"
 fi
 
 # Clojure packages
@@ -738,6 +748,7 @@ if should_publish_lang "clojure"; then
   publish_clojure "capnweb" "$ROOT_DIR/packages/clojure/capnweb" "do.capnweb/capnweb"
   publish_clojure "rpc" "$ROOT_DIR/packages/clojure/rpc" "do.rpc/rpc"
   publish_clojure "dotdo" "$ROOT_DIR/packages/clojure/dotdo" "dev.dotdo/dotdo"
+  publish_clojure "oauth" "$ROOT_DIR/packages/clojure/oauth" "do.oauth/oauth"
 fi
 
 # Crystal packages
@@ -746,6 +757,7 @@ if should_publish_lang "crystal"; then
   publish_crystal "capnweb" "$ROOT_DIR/packages/crystal/capnweb" "capnweb"
   publish_crystal "rpc" "$ROOT_DIR/packages/crystal/rpc" "rpc-do"
   publish_crystal "dotdo" "$ROOT_DIR/packages/crystal/dotdo" "dotdo"
+  publish_crystal "oauth" "$ROOT_DIR/packages/crystal/oauth" "oauth-do"
 fi
 
 # Nim packages
@@ -754,6 +766,7 @@ if should_publish_lang "nim"; then
   publish_nim "capnweb" "$ROOT_DIR/packages/nim/capnweb" "capnweb"
   publish_nim "rpc" "$ROOT_DIR/packages/nim/rpc" "rpc_do"
   publish_nim "dotdo" "$ROOT_DIR/packages/nim/dotdo" "dotdo"
+  publish_nim "oauth" "$ROOT_DIR/packages/nim/oauth" "oauth_do"
 fi
 
 # Deno packages
@@ -762,6 +775,7 @@ if should_publish_lang "deno"; then
   publish_deno "capnweb" "$ROOT_DIR/packages/deno/capnweb" "capnweb_do"
   publish_deno "rpc" "$ROOT_DIR/packages/deno/rpc" "rpc_do"
   publish_deno "dotdo" "$ROOT_DIR/packages/deno/dotdo" "dotdo"
+  publish_deno "oauth" "$ROOT_DIR/packages/deno/oauth" "oauth_do"
 fi
 
 # PHP packages
@@ -770,6 +784,7 @@ if should_publish_lang "php"; then
   publish_php "capnweb" "$ROOT_DIR/packages/php/capnweb" "dotdo/capnweb"
   publish_php "rpc" "$ROOT_DIR/packages/php/rpc" "dotdo/rpc"
   publish_php "dotdo" "$ROOT_DIR/packages/php/dotdo" "dotdo/dotdo"
+  publish_php "oauth" "$ROOT_DIR/packages/php/oauth" "dotdo/oauth"
 fi
 
 # ═══════════════════════════════════════════════════════════════
