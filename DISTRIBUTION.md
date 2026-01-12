@@ -312,3 +312,72 @@ jobs:
     ├── Hex:        {name}_do
     └── Packagist:  {name}.do/sdk
 ```
+
+## Package Name Availability: "capnweb"
+
+**Research Date:** 2026-01-12
+
+The name "capnweb" refers to Cloudflare's Cap'n Web RPC protocol. Before releasing SDK ports, we verified package name availability across all major registries.
+
+### Availability Status
+
+| Registry | Package Name | Status | Owner/Details |
+|----------|--------------|--------|---------------|
+| **npm** | `capnweb` | TAKEN | Cloudflare (official) - v0.1.0 |
+| **PyPI** | `capnweb` | TAKEN | Abilian SAS (egratw) - v0.4.0 |
+| **crates.io** | `capnweb` | RESERVED* | currentspace (capnweb-server, capnweb-transport exist) |
+| **RubyGems** | `capnweb` | AVAILABLE | - |
+| **Maven Central** | `capnweb` | AVAILABLE | - |
+| **NuGet** | `Capnweb` | AVAILABLE | - |
+| **pub.dev** | `capnweb` | AVAILABLE | - |
+| **Hex.pm** | `capnweb` | AVAILABLE | - |
+| **pkg.go.dev** | `capnweb` | AVAILABLE | - |
+| **Packagist** | `capnweb/*` | AVAILABLE | - |
+| **Nimble** | `capnweb` | AVAILABLE | - |
+| **Clojars** | `capnweb` | AVAILABLE | - |
+| **Shards** | `capnweb` | AVAILABLE | - |
+
+*Note: On crates.io, while `capnweb` itself may be available, the namespace is actively used by capnweb-server and capnweb-transport crates.
+
+### Existing Implementations
+
+1. **npm (Cloudflare Official)**
+   - Package: https://www.npmjs.com/package/capnweb
+   - Source: https://github.com/cloudflare/capnweb
+   - Description: JavaScript/TypeScript-native, low-boilerplate, object-capability RPC system
+
+2. **PyPI (Abilian SAS)**
+   - Package: https://pypi.org/project/capnweb/
+   - Source: https://github.com/abilian/py-capnweb
+   - Description: Python implementation of Cap'n Web RPC protocol
+   - Features: async/await, Pydantic integration, WebTransport support
+
+3. **crates.io (currentspace)**
+   - capnweb-server: https://crates.io/crates/capnweb-server
+   - capnweb-transport: https://crates.io/crates/capnweb-transport
+   - Source: https://github.com/currentspace/capn-rs
+   - Author: Brian Meek
+
+### Recommended Alternative Names
+
+Since "capnweb" is taken on key registries, consider these alternatives for SDK ports:
+
+| Alternative | Pattern | Example (Python) | Notes |
+|------------|---------|------------------|-------|
+| `capnweb-do` | `{name}-do` | `pip install capnweb-do` | Branded with .do |
+| `dotdo-capnweb` | `dotdo-{name}` | `pip install dotdo-capnweb` | Namespace prefix |
+| `capn-web` | `capn-web` | `pip install capn-web` | Hyphenated variant |
+| `rpc-do` | Use rpc.do branding | `pip install rpc-do` | Leverage owned domain |
+
+### Recommendation
+
+Given that:
+1. Cloudflare owns the official `capnweb` npm package
+2. Third-party implementations already exist on PyPI and crates.io
+3. We own the `rpc.do` domain
+
+**Recommended approach:** Use the `rpc.do` / `rpc-do` naming convention instead of trying to use `capnweb`. This:
+- Leverages our owned domain asset
+- Avoids conflicts with existing implementations
+- Provides a consistent naming pattern across all registries
+- Aligns with the existing package naming strategy in this document

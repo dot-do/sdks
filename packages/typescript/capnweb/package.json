@@ -1,5 +1,5 @@
 {
-  "name": "capnweb.do",
+  "name": "@dotdo/capnweb",
   "version": "0.1.0",
   "description": "Cap'n Proto over WebTransport - Core Protocol Types",
   "type": "module",
