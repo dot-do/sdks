@@ -95,11 +95,11 @@ We own hundreds of `.do` domains. Each domain maps directly to a package:
 
 ## Repository Structure
 
-Each `.do` domain gets its own repository, all scaffolded from the template in `dot-do/rpc`:
+Each `.do` domain gets its own repository, all scaffolded from the template in `dot-do/sdks`:
 
 ```
 github.com/dot-do/
-├── rpc/                    # THIS REPO - template + core RPC
+├── sdks/                   # THIS REPO - template + core RPC + multi-language SDKs
 │   ├── template/           # Scaffold for new .do repos
 │   │   ├── packages/       # All 17 language stubs
 │   │   ├── scripts/        # Build, test, publish scripts

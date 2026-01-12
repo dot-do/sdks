@@ -103,7 +103,7 @@ API-compatible wrappers that feel native to each ecosystem:
 ## Repository Structure
 
 ```
-github.com/dot-do/rpc/          # This repo - core RPC packages
+github.com/dot-do/sdks/         # This repo - core RPC packages and multi-language SDKs
 ├── packages/
 │   ├── typescript/
 │   │   ├── capnweb/            # @dotdo/capnweb
@@ -255,7 +255,7 @@ const names = await userIds.map(id => api.getUserName(id));  // Still RT 1!
 ## Migration Path
 
 ### Phase 1: Rename and Restructure (This PR)
-- Rename repo from `capnweb` to `rpc`
+- Rename repo from `capnweb` to `sdks`
 - Restructure packages into `capnweb/`, `rpc/`, `dotdo/` subdirectories
 - Update all package names to `@dotdo/*` convention
 

@@ -96,7 +96,7 @@ let user = api.users().get(123).await?;
 let name = api.users().get(123).profile().name().await?;
 ```
 
-### Go (go.pkg: github.com/dot-do/capnweb)
+### Go (go.pkg: github.com/dot-do/sdks/packages/go/capnweb)
 - **Async**: Context + channels (Go idiom: no async/await)
 - **Proxying**: Interface-based with code generation
 - **Types**: Generics (Go 1.18+)

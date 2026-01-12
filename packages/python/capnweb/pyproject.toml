@@ -43,10 +43,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/cloudflare/capnweb"
-Documentation = "https://github.com/cloudflare/capnweb#readme"
-Repository = "https://github.com/cloudflare/capnweb"
-Issues = "https://github.com/cloudflare/capnweb/issues"
+Homepage = "https://github.com/dot-do/sdks"
+Documentation = "https://github.com/dot-do/sdks#readme"
+Repository = "https://github.com/dot-do/sdks"
+Issues = "https://github.com/dot-do/sdks/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/capnweb"]

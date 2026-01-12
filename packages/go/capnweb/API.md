@@ -1,6 +1,6 @@
 # Cap'n Web Go Client API
 
-The final API design for `github.com/dot-do/capnweb`.
+The final API design for `github.com/dot-do/sdks/packages/go/capnweb`.
 
 ## Design Principles
 
@@ -355,7 +355,7 @@ import (
     "log"
     "os"
 
-    "github.com/dot-do/capnweb"
+    "github.com/dot-do/sdks/packages/go/capnweb"
 )
 
 // Define your API contract

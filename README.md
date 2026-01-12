@@ -1,4 +1,8 @@
-# Cap'n Web: A JavaScript-native RPC system
+# DotDo SDKs
+
+Multi-language SDK repository for DotDo services, built on Cap'n Web RPC.
+
+## About Cap'n Web
 
 Cap'n Web is a spiritual sibling to [Cap'n Proto](https://capnproto.org) (and is created by the same author), but designed to play nice in the web stack. That means:
 * Like Cap'n Proto, it is an object-capability protocol. ("Cap'n" is short for "capabilities and".) We'll get into this more below, but it's incredibly powerful.
@@ -18,11 +22,13 @@ Cap'n Web is more expressive than almost every other RPC system, because it impl
 
 ## Installation
 
-[Cap'n Web is an npm package.](https://www.npmjs.com/package/capnweb)
+[Cap'n Web is available as an npm package.](https://www.npmjs.com/package/capnweb)
 
 ```
 npm i capnweb
 ```
+
+For DotDo SDKs in other languages, see the `packages/` directory.
 
 ## Example
 

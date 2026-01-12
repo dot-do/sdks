@@ -22,7 +22,7 @@ Context for cancellation. Value and error. The Go way.
 ## Installation
 
 ```bash
-go get github.com/dot-do/capnweb
+go get github.com/dot-do/sdks/packages/go/capnweb
 ```
 
 ## Quick Start
@@ -36,7 +36,7 @@ import (
     "log"
     "os"
 
-    "github.com/dot-do/capnweb"
+    "github.com/dot-do/sdks/packages/go/capnweb"
 )
 
 // Define your API as a Go interface
@@ -760,7 +760,7 @@ import (
     "syscall"
     "time"
 
-    "github.com/dot-do/capnweb"
+    "github.com/dot-do/sdks/packages/go/capnweb"
 )
 
 // Remote API contracts

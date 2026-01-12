@@ -1,6 +1,6 @@
 # Cap'n Web Go Client Syntax Exploration
 
-This document explores divergent syntax approaches for the Go client library (`github.com/dot-do/capnweb`). Each approach prioritizes different Go idioms and makes different trade-offs.
+This document explores divergent syntax approaches for the Go client library (`github.com/dot-do/sdks/packages/go/capnweb`). Each approach prioritizes different Go idioms and makes different trade-offs.
 
 ## Background: What Makes Go Different
 
@@ -28,7 +28,7 @@ package main
 
 import (
     "context"
-    "github.com/dot-do/capnweb"
+    "github.com/dot-do/sdks/packages/go/capnweb"
     "github.com/example/myapi" // Generated from schema
 )
 
@@ -168,7 +168,7 @@ package main
 
 import (
     "context"
-    "github.com/dot-do/capnweb"
+    "github.com/dot-do/sdks/packages/go/capnweb"
 )
 
 func main() {
@@ -331,8 +331,8 @@ package main
 
 import (
     "context"
-    "github.com/dot-do/capnweb"
-    "github.com/dot-do/capnweb/transport/websocket"
+    "github.com/dot-do/sdks/packages/go/capnweb"
+    "github.com/dot-do/sdks/packages/go/capnweb/transport/websocket"
 )
 
 func main() {
@@ -510,7 +510,7 @@ package main
 
 import (
     "context"
-    "github.com/dot-do/capnweb"
+    "github.com/dot-do/sdks/packages/go/capnweb"
 )
 
 func main() {
@@ -849,7 +849,7 @@ For the Cap'n Web Go client, I recommend **Approach 5 (Hybrid)** with emphasis o
 ### Proposed Module Structure
 
 ```
-github.com/dot-do/capnweb
+github.com/dot-do/sdks/packages/go/capnweb
 ├── capnweb.go          # Core types and interfaces
 ├── session.go          # Session management
 ├── transport/          # Transport implementations
@@ -876,7 +876,7 @@ import (
     "context"
     "log"
 
-    "github.com/dot-do/capnweb"
+    "github.com/dot-do/sdks/packages/go/capnweb"
 )
 
 func main() {

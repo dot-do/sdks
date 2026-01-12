@@ -1,7 +1,7 @@
 {
-  "name": "capnweb",
+  "name": "@dotdo/sdks",
   "version": "0.4.0",
-  "description": "JavaScript/TypeScript-native RPC library with Promise Pipelining",
+  "description": "DotDo SDKs - JavaScript/TypeScript-native RPC library with Promise Pipelining",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "author": "Kenton Varda <kenton@cloudflare.com>",
@@ -55,10 +55,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/cloudflare/capnweb"
+    "url": "https://github.com/dot-do/sdks"
   },
   "bugs": {
-    "url": "https://github.com/cloudflare/capnweb/issues"
+    "url": "https://github.com/dot-do/sdks/issues"
   },
-  "homepage": "https://github.com/cloudflare/capnweb#readme"
+  "homepage": "https://github.com/dot-do/sdks#readme"
 }

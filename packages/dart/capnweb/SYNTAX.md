@@ -1371,7 +1371,7 @@ class MessagePortTransport implements RpcTransport {
 name: capnweb
 description: Cap'n Web RPC client for Dart - bidirectional capability-based RPC over JSON
 version: 1.0.0
-repository: https://github.com/dot-do/capnweb
+repository: https://github.com/dot-do/sdks
 homepage: https://capnweb.dev
 
 environment:
