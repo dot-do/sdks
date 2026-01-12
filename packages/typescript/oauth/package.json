@@ -1,61 +1,81 @@
 {
   "name": "oauth.do",
-  "version": "0.1.0",
-  "description": "OAuth authentication for DotDo CLI and SDK - Local CLI authentication with secure token storage",
+  "version": "0.1.17",
+  "description": "OAuth authentication SDK and CLI for org.ai identity",
   "type": "module",
   "main": "./dist/index.js",
-  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "oauth.do": "./dist/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
     },
-    "./storage": {
-      "types": "./dist/storage.d.ts",
-      "import": "./dist/storage.js"
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js",
+      "require": "./dist/node.js",
+      "default": "./dist/node.js"
     },
-    "./browser": {
-      "types": "./dist/browser.d.ts",
-      "import": "./dist/browser.js"
-    },
-    "./device": {
-      "types": "./dist/device.d.ts",
-      "import": "./dist/device.js"
-    }
+    "./mdx/*": "./src/mdx/*"
   },
   "files": [
     "dist",
-    "src"
+    "src/mdx",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "clean": "rm -rf dist",
+    "build": "tsup",
+    "dev": "tsup --watch",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "check:publish": "node -e \"const pkg = require('./package.json'); const deps = JSON.stringify(pkg.dependencies || {}); if (deps.includes('workspace:')) { console.error('ERROR: workspace: protocol found in dependencies. Replace with actual versions before publishing.'); process.exit(1); }\"",
+    "prepublishOnly": "pnpm check:publish && pnpm build && pnpm test"
   },
   "keywords": [
     "oauth",
-    "dotdo",
     "authentication",
+    "auth",
+    "login",
+    "identity",
     "cli",
-    "keychain",
-    "token",
-    "device-flow"
+    "sdk",
+    "org-ai",
+    "dotdo"
   ],
-  "author": "DotDo",
+  "author": {
+    "name": "DotDo",
+    "email": "npm@dotdo.dev",
+    "url": "https://dotdo.dev"
+  },
   "license": "MIT",
-  "dependencies": {
-    "keytar": "^7.9.0",
-    "open": "^10.0.0"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dot-do/sdks.git",
+    "directory": "packages/typescript/oauth"
   },
-  "devDependencies": {
-    "@types/node": "^20.10.0",
-    "typescript": "^5.3.0",
-    "vitest": "^1.0.0"
+  "bugs": {
+    "url": "https://github.com/dot-do/sdks/issues"
   },
+  "homepage": "https://oauth.do",
   "engines": {
     "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "open": "^10.1.0"
+  },
+  "optionalDependencies": {
+    "keytar": "^7.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.2",
+    "vitest": "^2.1.8"
   }
 }

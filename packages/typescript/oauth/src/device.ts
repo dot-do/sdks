@@ -1,368 +1,144 @@
+import { getConfig } from './config.js'
+import type { DeviceAuthorizationResponse, TokenResponse, TokenError } from './types.js'
+
 /**
- * oauth.do - Device Code OAuth flow
+ * OAuth provider options for direct provider login
+ * Bypasses AuthKit login screen and goes directly to the provider
+ */
+export type OAuthProvider = 'GitHubOAuth' | 'GoogleOAuth' | 'MicrosoftOAuth' | 'AppleOAuth'
+
+export interface DeviceAuthOptions {
+	/** OAuth provider to use directly (bypasses AuthKit login screen) */
+	provider?: OAuthProvider
+}
+
+/**
+ * Initiate device authorization flow
+ * Following OAuth 2.0 Device Authorization Grant (RFC 8628)
  *
- * Implements the Device Authorization Grant (RFC 8628) for:
- * - Headless servers
- * - SSH sessions
- * - CI/CD environments
- * - Remote terminals
+ * @param options - Optional settings including provider for direct OAuth
+ * @returns Device authorization response with codes and URIs
  */
+export async function authorizeDevice(options: DeviceAuthOptions = {}): Promise<DeviceAuthorizationResponse> {
+	const config = getConfig()
 
-import type {
-  Token,
-  AuthOptions,
-  DeviceAuthorizationResponse,
-  TokenResponse,
-} from './types.js';
-import { AuthError, OAUTH_DEFAULTS } from './types.js';
+	if (!config.clientId) {
+		throw new Error('Client ID is required for device authorization. Set OAUTH_CLIENT_ID or configure({ clientId: "..." })')
+	}
 
-// ============================================================================
-// Device Authorization
-// ============================================================================
+	try {
+		const url = 'https://auth.apis.do/user_management/authorize/device'
+		const body = new URLSearchParams({
+			client_id: config.clientId,
+			scope: 'openid profile email',
+		})
 
-/**
- * Request device authorization
- */
-async function requestDeviceAuthorization(
-  options: AuthOptions = {}
-): Promise<DeviceAuthorizationResponse> {
-  const authServer = options.authServer || OAUTH_DEFAULTS.authServer;
-  const clientId = options.clientId || OAUTH_DEFAULTS.clientId;
-  const scopes = options.scopes || OAUTH_DEFAULTS.scopes;
+		// Add provider if specified (bypasses AuthKit login screen)
+		if (options.provider) {
+			body.set('provider', options.provider)
+		}
 
-  const deviceAuthUrl = `${authServer}/device/code`;
+		const response = await config.fetch(url, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/x-www-form-urlencoded',
+			},
+			body: body.toString(),
+		})
 
-  const body = new URLSearchParams({
-    client_id: clientId,
-    scope: scopes.join(' '),
-  });
+		if (!response.ok) {
+			const errorText = await response.text()
+			throw new Error(`Device authorization failed: ${response.statusText} - ${errorText}`)
+		}
 
-  const response = await fetch(deviceAuthUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: body.toString(),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new AuthError(
-      `Device authorization failed: ${error.error_description || error.error || response.statusText}`,
-      'NETWORK_ERROR',
-      { status: response.status }
-    );
-  }
-
-  const data = await response.json();
-
-  return {
-    deviceCode: data.device_code,
-    userCode: data.user_code,
-    verificationUri: data.verification_uri,
-    verificationUriComplete: data.verification_uri_complete,
-    expiresIn: data.expires_in,
-    interval: data.interval || 5,
-  };
-}
-
-// ============================================================================
-// Token Polling
-// ============================================================================
-
-interface PollOptions {
-  authServer: string;
-  clientId: string;
-  deviceCode: string;
-  interval: number;
-  expiresIn: number;
-  timeout: number;
-  onPoll?: (attempt: number) => void;
+		const data = (await response.json()) as DeviceAuthorizationResponse
+		return data
+	} catch (error) {
+		console.error('Device authorization error:', error)
+		throw error
+	}
 }
 
 /**
- * Poll for token after user authorizes
- */
-async function pollForToken(options: PollOptions): Promise<Token> {
-  const tokenUrl = `${options.authServer}/token`;
-  const startTime = Date.now();
-  const expiryTime = startTime + options.expiresIn * 1000;
-  const timeoutTime = startTime + options.timeout;
-  let attempt = 0;
-  let interval = options.interval * 1000;
-
-  while (true) {
-    // Check timeout
-    const now = Date.now();
-    if (now > timeoutTime) {
-      throw new AuthError('Authentication timed out', 'TIMEOUT');
-    }
-    if (now > expiryTime) {
-      throw new AuthError('Device code expired', 'TOKEN_EXPIRED');
-    }
-
-    // Wait for interval
-    await sleep(interval);
-    attempt++;
-    options.onPoll?.(attempt);
-
-    // Poll for token
-    const body = new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-      device_code: options.deviceCode,
-      client_id: options.clientId,
-    });
-
-    const response = await fetch(tokenUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: body.toString(),
-    });
-
-    if (response.ok) {
-      const tokenResponse: TokenResponse = await response.json();
-      return {
-        accessToken: tokenResponse.access_token,
-        tokenType: tokenResponse.token_type || 'Bearer',
-        expiresAt: tokenResponse.expires_in
-          ? Math.floor(Date.now() / 1000) + tokenResponse.expires_in
-          : undefined,
-        refreshToken: tokenResponse.refresh_token,
-        scopes: tokenResponse.scope?.split(' '),
-      };
-    }
-
-    // Handle error responses
-    const error = await response.json().catch(() => ({ error: 'unknown_error' }));
-
-    switch (error.error) {
-      case 'authorization_pending':
-        // User hasn't authorized yet, continue polling
-        break;
-
-      case 'slow_down':
-        // Increase polling interval
-        interval += 5000;
-        break;
-
-      case 'access_denied':
-        throw new AuthError('User denied authorization', 'ACCESS_DENIED');
-
-      case 'expired_token':
-        throw new AuthError('Device code expired', 'TOKEN_EXPIRED');
-
-      default:
-        throw new AuthError(
-          `Token request failed: ${error.error_description || error.error}`,
-          'INVALID_GRANT',
-          { status: response.status }
-        );
-    }
-  }
-}
-
-// ============================================================================
-// Device Flow
-// ============================================================================
-
-/**
- * Options specific to device flow
- */
-export interface DeviceFlowOptions extends AuthOptions {
-  /** Callback when polling for token */
-  onPoll?: (attempt: number) => void;
-  /** Callback when user code is ready */
-  onUserCode?: (code: string, verificationUri: string, verificationUriComplete?: string) => void;
-}
-
-/**
- * Run the device code OAuth flow
+ * Poll for tokens after device authorization
  *
- * This flow is suitable for:
- * - Headless servers
- * - SSH sessions
- * - CI/CD environments
- * - Environments where opening a browser isn't possible
- *
- * @param options - Device flow options
- * @returns Token on successful authentication
- *
- * @example
- * ```ts
- * const token = await deviceFlow({
- *   interactive: true,
- *   onUserCode: (code, uri) => {
- *     console.log(`Enter code ${code} at ${uri}`);
- *   }
- * });
- * ```
+ * @param deviceCode - Device code from authorization response
+ * @param interval - Polling interval in seconds (default: 5)
+ * @param expiresIn - Expiration time in seconds (default: 600)
+ * @returns Token response with access token and user info
  */
-export async function deviceFlow(options: DeviceFlowOptions = {}): Promise<Token> {
-  const authServer = options.authServer || OAUTH_DEFAULTS.authServer;
-  const clientId = options.clientId || OAUTH_DEFAULTS.clientId;
-  const timeout = options.timeout || OAUTH_DEFAULTS.timeout;
+export async function pollForTokens(
+	deviceCode: string,
+	interval: number = 5,
+	expiresIn: number = 600
+): Promise<TokenResponse> {
+	const config = getConfig()
 
-  // Request device authorization
-  const deviceAuth = await requestDeviceAuthorization(options);
+	if (!config.clientId) {
+		throw new Error('Client ID is required for token polling')
+	}
 
-  // Notify caller of user code
-  if (options.onUserCode) {
-    options.onUserCode(
-      deviceAuth.userCode,
-      deviceAuth.verificationUri,
-      deviceAuth.verificationUriComplete
-    );
-  }
+	const startTime = Date.now()
+	const timeout = expiresIn * 1000
+	let currentInterval = interval * 1000
 
-  // Display instructions if interactive
-  if (options.interactive) {
-    displayDeviceCodeInstructions(deviceAuth);
-  }
+	while (true) {
+		// Check if expired
+		if (Date.now() - startTime > timeout) {
+			throw new Error('Device authorization expired. Please try again.')
+		}
 
-  // Poll for token
-  const token = await pollForToken({
-    authServer,
-    clientId,
-    deviceCode: deviceAuth.deviceCode,
-    interval: deviceAuth.interval,
-    expiresIn: deviceAuth.expiresIn,
-    timeout,
-    onPoll: options.onPoll,
-  });
+		// Wait for interval
+		await new Promise((resolve) => setTimeout(resolve, currentInterval))
 
-  if (options.interactive) {
-    console.log('\nAuthentication successful!\n');
-  }
+		try {
+			const response = await config.fetch('https://auth.apis.do/user_management/authenticate', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded',
+				},
+				body: new URLSearchParams({
+					grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+					device_code: deviceCode,
+					client_id: config.clientId,
+				}).toString(),
+			})
 
-  return token;
-}
+			if (response.ok) {
+				const data = (await response.json()) as TokenResponse
+				return data
+			}
 
-// ============================================================================
-// Display Helpers
-// ============================================================================
+			// Handle error responses
+			const errorData = (await response.json().catch(() => ({ error: 'unknown' }))) as { error?: string }
+			const error = (errorData.error || 'unknown') as TokenError
 
-/**
- * Display device code instructions to the user
- */
-function displayDeviceCodeInstructions(deviceAuth: DeviceAuthorizationResponse): void {
-  const boxWidth = 50;
-  const line = '-'.repeat(boxWidth);
+			switch (error) {
+				case 'authorization_pending':
+					// Continue polling
+					continue
 
-  console.log('\n' + line);
-  console.log('  Device Authentication');
-  console.log(line);
-  console.log('');
-  console.log('  To authenticate, visit:');
-  console.log('');
-  console.log(`    ${deviceAuth.verificationUri}`);
-  console.log('');
-  console.log('  And enter the code:');
-  console.log('');
-  console.log(`    ${formatUserCode(deviceAuth.userCode)}`);
-  console.log('');
+				case 'slow_down':
+					// Increase interval by 5 seconds
+					currentInterval += 5000
+					continue
 
-  if (deviceAuth.verificationUriComplete) {
-    console.log('  Or visit this URL directly:');
-    console.log('');
-    console.log(`    ${deviceAuth.verificationUriComplete}`);
-    console.log('');
-  }
+				case 'access_denied':
+					throw new Error('Access denied by user')
 
-  const expiresMinutes = Math.floor(deviceAuth.expiresIn / 60);
-  console.log(`  Code expires in ${expiresMinutes} minutes.`);
-  console.log(line);
-  console.log('');
-  console.log('  Waiting for authorization...');
-}
+				case 'expired_token':
+					throw new Error('Device code expired')
 
-/**
- * Format user code with spacing for readability
- */
-function formatUserCode(code: string): string {
-  // Add spacing if code has a dash
-  if (code.includes('-')) {
-    return code;
-  }
-
-  // Add dash to split code in half for readability
-  if (code.length >= 6) {
-    const mid = Math.floor(code.length / 2);
-    return code.slice(0, mid) + '-' + code.slice(mid);
-  }
-
-  return code;
-}
-
-// ============================================================================
-// Utilities
-// ============================================================================
-
-/**
- * Sleep for specified milliseconds
- */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// ============================================================================
-// Environment Detection
-// ============================================================================
-
-/**
- * Check if we're in a headless environment
- */
-export function isHeadless(): boolean {
-  // Check for common headless indicators
-  if (process.env.SSH_CONNECTION || process.env.SSH_TTY) {
-    return true;
-  }
-
-  // Check for CI environments
-  if (
-    process.env.CI ||
-    process.env.GITHUB_ACTIONS ||
-    process.env.GITLAB_CI ||
-    process.env.CIRCLECI ||
-    process.env.JENKINS_URL
-  ) {
-    return true;
-  }
-
-  // Check for Docker/container environments
-  if (process.env.KUBERNETES_SERVICE_HOST || process.env.container) {
-    return true;
-  }
-
-  // Check if DISPLAY is missing (Linux)
-  if (process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
-    return true;
-  }
-
-  return false;
-}
-
-/**
- * Check if browser flow is available
- */
-export function canUseBrowserFlow(): boolean {
-  // Can't use browser in headless environments
-  if (isHeadless()) {
-    return false;
-  }
-
-  // Platform-specific checks
-  switch (process.platform) {
-    case 'darwin':
-    case 'win32':
-      return true;
-
-    case 'linux':
-      // Need DISPLAY or WAYLAND for GUI
-      return !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
-
-    default:
-      return false;
-  }
+				default:
+					throw new Error(`Token polling failed: ${error}`)
+			}
+		} catch (error) {
+			// If it's our thrown error, re-throw it
+			if (error instanceof Error) {
+				throw error
+			}
+			// Otherwise continue polling
+			continue
+		}
+	}
 }

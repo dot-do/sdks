@@ -626,19 +626,18 @@ if $DRY_RUN; then
   echo -e "${YELLOW}DRY RUN MODE - No actual publishing will occur${NC}"
 fi
 
-# TypeScript packages
+# TypeScript packages (dotdo published from dot-do/dotdo repo)
 if should_publish_lang "ts"; then
   log_section "TypeScript / npm"
-  publish_typescript "capnweb" "$ROOT_DIR/packages/typescript/capnweb" "@dotdo/capnweb"
+  publish_typescript "capnweb" "$ROOT_DIR/packages/typescript/capnweb" "capnweb"
   publish_typescript "rpc" "$ROOT_DIR/packages/typescript/rpc" "rpc.do"
-  publish_typescript "dotdo" "$ROOT_DIR/packages/typescript/dotdo" "dotdo"
   publish_typescript "oauth" "$ROOT_DIR/packages/typescript/oauth" "oauth.do"
 fi
 
 # Python packages
 if should_publish_lang "py"; then
   log_section "Python / PyPI"
-  publish_python "capnweb" "$ROOT_DIR/packages/python/capnweb" "capnweb-do"
+  publish_python "capnweb" "$ROOT_DIR/packages/python/capnweb" "capnweb"
   publish_python "rpc" "$ROOT_DIR/packages/python/rpc" "rpc-do"
   publish_python "dotdo" "$ROOT_DIR/packages/python/dotdo" "dotdo"
   publish_python "oauth" "$ROOT_DIR/packages/python/oauth" "oauth-do"
@@ -647,7 +646,7 @@ fi
 # Rust packages
 if should_publish_lang "rust"; then
   log_section "Rust / crates.io"
-  publish_rust "capnweb" "$ROOT_DIR/packages/rust/capnweb" "capnweb-do"
+  publish_rust "capnweb" "$ROOT_DIR/packages/rust/capnweb" "capnweb"
   publish_rust "rpc" "$ROOT_DIR/packages/rust/rpc" "rpc-do"
   publish_rust "dotdo" "$ROOT_DIR/packages/rust/dotdo" "dotdo"
 fi
@@ -664,24 +663,24 @@ fi
 # Ruby packages
 if should_publish_lang "ruby"; then
   log_section "Ruby / RubyGems"
-  publish_ruby "capnweb" "$ROOT_DIR/packages/ruby/capnweb" "capnweb.do"
-  publish_ruby "rpc" "$ROOT_DIR/packages/ruby/rpc" "rpc.do"
-  publish_ruby "dotdo" "$ROOT_DIR/packages/ruby/dotdo" "platform.do"
+  publish_ruby "capnweb" "$ROOT_DIR/packages/ruby/capnweb" "capnweb"
+  publish_ruby "rpc" "$ROOT_DIR/packages/ruby/rpc" "rpc-do"
+  publish_ruby "dotdo" "$ROOT_DIR/packages/ruby/dotdo" "dotdo"
 fi
 
 # C# packages
 if should_publish_lang "csharp"; then
   log_section "C# / NuGet"
-  publish_csharp "capnweb" "$ROOT_DIR/packages/dotnet/capnweb" "DotDo.CapnWeb"
-  publish_csharp "rpc" "$ROOT_DIR/packages/dotnet/rpc" "DotDo.Rpc"
+  publish_csharp "capnweb" "$ROOT_DIR/packages/dotnet/capnweb" "CapnWeb"
+  publish_csharp "rpc" "$ROOT_DIR/packages/dotnet/rpc" "RpcDo"
   publish_csharp "dotdo" "$ROOT_DIR/packages/dotnet/dotdo" "DotDo"
 fi
 
 # F# packages
 if should_publish_lang "fsharp"; then
   log_section "F# / NuGet"
-  publish_fsharp "capnweb" "$ROOT_DIR/packages/fsharp/capnweb" "DotDo.CapnWeb.FSharp"
-  publish_fsharp "rpc" "$ROOT_DIR/packages/fsharp/rpc" "DotDo.Rpc.FSharp"
+  publish_fsharp "capnweb" "$ROOT_DIR/packages/fsharp/capnweb" "CapnWeb.FSharp"
+  publish_fsharp "rpc" "$ROOT_DIR/packages/fsharp/rpc" "RpcDo.FSharp"
   publish_fsharp "dotdo" "$ROOT_DIR/packages/fsharp/dotdo" "DotDo.FSharp"
 fi
 
@@ -696,31 +695,31 @@ fi
 # Kotlin packages
 if should_publish_lang "kotlin"; then
   log_section "Kotlin / Maven Central"
-  publish_kotlin "capnweb" "$ROOT_DIR/packages/kotlin/capnweb" "do.capnweb:capnweb-kt"
-  publish_kotlin "rpc" "$ROOT_DIR/packages/kotlin/rpc" "do.rpc:rpc-kt"
-  publish_kotlin "dotdo" "$ROOT_DIR/packages/kotlin/dotdo" "dev.dotdo:dotdo-kt"
+  publish_kotlin "capnweb" "$ROOT_DIR/packages/kotlin/capnweb" "do.capnweb:capnweb"
+  publish_kotlin "rpc" "$ROOT_DIR/packages/kotlin/rpc" "do.rpc:rpc"
+  publish_kotlin "dotdo" "$ROOT_DIR/packages/kotlin/dotdo" "dev.dotdo:dotdo"
 fi
 
 # Scala packages
 if should_publish_lang "scala"; then
   log_section "Scala / Maven Central"
-  publish_scala "capnweb" "$ROOT_DIR/packages/scala/capnweb" "do.capnweb:capnweb-scala"
-  publish_scala "rpc" "$ROOT_DIR/packages/scala/rpc" "do.rpc:rpc-scala"
-  publish_scala "dotdo" "$ROOT_DIR/packages/scala/dotdo" "dev.dotdo:dotdo-scala"
+  publish_scala "capnweb" "$ROOT_DIR/packages/scala/capnweb" "do.capnweb:capnweb"
+  publish_scala "rpc" "$ROOT_DIR/packages/scala/rpc" "do.rpc:rpc"
+  publish_scala "dotdo" "$ROOT_DIR/packages/scala/dotdo" "dev.dotdo:dotdo"
 fi
 
 # Swift packages
 if should_publish_lang "swift"; then
   log_section "Swift / SPM"
-  publish_swift "capnweb" "$ROOT_DIR/packages/swift/capnweb" "capnweb-swift"
-  publish_swift "rpc" "$ROOT_DIR/packages/swift/rpc" "rpc-do-swift"
-  publish_swift "dotdo" "$ROOT_DIR/packages/swift/dotdo" "dotdo-swift"
+  publish_swift "capnweb" "$ROOT_DIR/packages/swift/capnweb" "capnweb"
+  publish_swift "rpc" "$ROOT_DIR/packages/swift/rpc" "rpc-do"
+  publish_swift "dotdo" "$ROOT_DIR/packages/swift/dotdo" "dotdo"
 fi
 
 # Dart packages
 if should_publish_lang "dart"; then
   log_section "Dart / pub.dev"
-  publish_dart "capnweb" "$ROOT_DIR/packages/dart/capnweb" "capnweb_do"
+  publish_dart "capnweb" "$ROOT_DIR/packages/dart/capnweb" "capnweb"
   publish_dart "rpc" "$ROOT_DIR/packages/dart/rpc" "rpc_do"
   publish_dart "dotdo" "$ROOT_DIR/packages/dart/dotdo" "dotdo"
 fi
@@ -728,7 +727,7 @@ fi
 # Elixir packages
 if should_publish_lang "elixir"; then
   log_section "Elixir / Hex.pm"
-  publish_elixir "capnweb" "$ROOT_DIR/packages/elixir/capnweb" "capnweb_do"
+  publish_elixir "capnweb" "$ROOT_DIR/packages/elixir/capnweb" "capnweb"
   publish_elixir "rpc" "$ROOT_DIR/packages/elixir/rpc" "rpc_do"
   publish_elixir "dotdo" "$ROOT_DIR/packages/elixir/dotdo" "dotdo"
 fi
@@ -744,17 +743,17 @@ fi
 # Crystal packages
 if should_publish_lang "crystal"; then
   log_section "Crystal / shards"
-  publish_crystal "capnweb" "$ROOT_DIR/packages/crystal/capnweb" "capnweb.do"
-  publish_crystal "rpc" "$ROOT_DIR/packages/crystal/rpc" "rpc.do"
+  publish_crystal "capnweb" "$ROOT_DIR/packages/crystal/capnweb" "capnweb"
+  publish_crystal "rpc" "$ROOT_DIR/packages/crystal/rpc" "rpc-do"
   publish_crystal "dotdo" "$ROOT_DIR/packages/crystal/dotdo" "dotdo"
 fi
 
 # Nim packages
 if should_publish_lang "nim"; then
   log_section "Nim / Nimble"
-  publish_nim "capnweb" "$ROOT_DIR/packages/nim/capnweb" "capnwebdo"
-  publish_nim "rpc" "$ROOT_DIR/packages/nim/rpc" "rpcdo"
-  publish_nim "dotdo" "$ROOT_DIR/packages/nim/dotdo" "platformdo"
+  publish_nim "capnweb" "$ROOT_DIR/packages/nim/capnweb" "capnweb"
+  publish_nim "rpc" "$ROOT_DIR/packages/nim/rpc" "rpc_do"
+  publish_nim "dotdo" "$ROOT_DIR/packages/nim/dotdo" "dotdo"
 fi
 
 # Deno packages

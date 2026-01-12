@@ -1,544 +1,511 @@
+import type { TokenStorage, StoredTokenData } from './types.js'
+
+// Keychain service and account identifiers
+const KEYCHAIN_SERVICE = 'oauth.do'
+const KEYCHAIN_ACCOUNT = 'access_token'
+
 /**
- * oauth.do - Token storage with keychain and file fallback
+ * Check if we're running in a Node.js environment
+ */
+function isNode(): boolean {
+	return typeof process !== 'undefined' &&
+		process.versions != null &&
+		process.versions.node != null
+}
+
+/**
+ * Safe environment variable access
+ */
+function getEnv(key: string): string | undefined {
+	if (typeof process !== 'undefined' && process.env?.[key]) return process.env[key]
+	return undefined
+}
+
+/**
+ * Keychain-based token storage using OS credential manager
+ * - macOS: Keychain
+ * - Windows: Credential Manager
+ * - Linux: Secret Service (libsecret)
  *
- * Storage priority:
- * 1. Environment variables (DOTDO_TOKEN, DOTDO_API_KEY)
- * 2. System keychain (macOS Keychain, Linux libsecret, Windows Credential Manager)
- * 3. File fallback (~/.config/dotdo/credentials.json)
+ * This is the most secure option for CLI token storage.
  */
+export class KeychainTokenStorage implements TokenStorage {
+	private keytar: typeof import('keytar') | null = null
+	private initialized = false
 
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import * as os from 'node:os';
-import * as crypto from 'node:crypto';
+	/**
+	 * Lazily load keytar module
+	 * Returns null if keytar is not available (e.g., missing native dependencies)
+	 */
+	private async getKeytar(): Promise<typeof import('keytar') | null> {
+		if (this.initialized) {
+			return this.keytar
+		}
 
-import type { Token, StoredCredential, StorageOptions } from './types.js';
-import { AuthError, OAUTH_DEFAULTS, ENV_VARS } from './types.js';
+		this.initialized = true
 
-// ============================================================================
-// Keytar Types (optional dependency)
-// ============================================================================
+		try {
+			// Dynamic import to handle cases where keytar native module isn't available
+			const imported = await import('keytar')
+			// Handle ESM/CJS interop - keytar is CommonJS, so functions may be on .default
+			const keytarModule = (imported as any).default || imported
+			this.keytar = keytarModule as typeof import('keytar')
 
-interface Keytar {
-  getPassword(service: string, account: string): Promise<string | null>;
-  setPassword(service: string, account: string, password: string): Promise<void>;
-  deletePassword(service: string, account: string): Promise<boolean>;
-  findCredentials(service: string): Promise<Array<{ account: string; password: string }>>;
-}
+			// Verify the module loaded correctly by checking for expected function
+			if (typeof this.keytar.getPassword !== 'function') {
+				if (getEnv('DEBUG')) {
+					console.warn('Keytar module loaded but getPassword is not a function:', Object.keys(this.keytar))
+				}
+				this.keytar = null
+				return null
+			}
 
-let keytarModule: Keytar | null = null;
-let keytarLoadAttempted = false;
+			return this.keytar
+		} catch (error) {
+			// keytar requires native dependencies that may not be available
+			// Fall back gracefully
+			if (getEnv('DEBUG')) {
+				console.warn('Keychain storage not available:', error)
+			}
+			return null
+		}
+	}
 
-/**
- * Attempt to load keytar module
- */
-async function loadKeytar(): Promise<Keytar | null> {
-  if (keytarLoadAttempted) {
-    return keytarModule;
-  }
-  keytarLoadAttempted = true;
+	async getToken(): Promise<string | null> {
+		const keytar = await this.getKeytar()
+		if (!keytar) {
+			return null
+		}
 
-  try {
-    // Dynamic import to make keytar optional
-    keytarModule = await import('keytar');
-    return keytarModule;
-  } catch {
-    // keytar not available - will use file fallback
-    return null;
-  }
-}
+		try {
+			const token = await keytar.getPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+			return token
+		} catch (error) {
+			if (getEnv('DEBUG')) {
+				console.warn('Failed to get token from keychain:', error)
+			}
+			return null
+		}
+	}
 
-// ============================================================================
-// Storage Configuration
-// ============================================================================
+	async setToken(token: string): Promise<void> {
+		try {
+			const keytar = await this.getKeytar()
+			if (!keytar) {
+				throw new Error('Keychain storage not available')
+			}
 
-/**
- * Get the configuration directory path
- */
-export function getConfigDir(options?: StorageOptions): string {
-  // Check environment variable first
-  const envDir = process.env[ENV_VARS.CONFIG_DIR];
-  if (envDir) {
-    return envDir;
-  }
+			await keytar.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, token)
+		} catch (error: any) {
+			// Check if this is a native module error vs an actual keychain error
+			if (error?.code === 'MODULE_NOT_FOUND' || error?.message?.includes('Cannot find module')) {
+				throw new Error('Keychain storage not available: native module not built')
+			}
+			throw new Error(`Failed to save token to keychain: ${error}`)
+		}
+	}
 
-  // Use provided option
-  if (options?.configDir) {
-    return options.configDir;
-  }
+	async removeToken(): Promise<void> {
+		const keytar = await this.getKeytar()
+		if (!keytar) {
+			return
+		}
 
-  // Default: ~/.config/dotdo on Unix, %APPDATA%/dotdo on Windows
-  const platform = process.platform;
-  if (platform === 'win32') {
-    const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
-    return path.join(appData, 'dotdo');
-  }
+		try {
+			await keytar.deletePassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+		} catch {
+			// Ignore errors if credential doesn't exist
+		}
+	}
 
-  // XDG Base Directory specification
-  const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
-  return path.join(xdgConfig, 'dotdo');
-}
+	/**
+	 * Check if keychain storage is available on this system
+	 */
+	async isAvailable(): Promise<boolean> {
+		try {
+			const keytar = await this.getKeytar()
+			if (!keytar) {
+				return false
+			}
 
-/**
- * Get the credentials file path
- */
-export function getCredentialsPath(options?: StorageOptions): string {
-  return path.join(getConfigDir(options), 'credentials.json');
-}
-
-/**
- * Ensure the config directory exists
- */
-function ensureConfigDir(options?: StorageOptions): void {
-  const dir = getConfigDir(options);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  }
-}
-
-// ============================================================================
-// Environment Variable Storage
-// ============================================================================
-
-/**
- * Check for token in environment variables
- */
-export function getEnvToken(): Token | null {
-  // Direct token override
-  const envToken = process.env[ENV_VARS.TOKEN];
-  if (envToken) {
-    return {
-      accessToken: envToken,
-      tokenType: 'Bearer',
-    };
-  }
-
-  // API key authentication
-  const apiKey = process.env[ENV_VARS.API_KEY];
-  if (apiKey) {
-    return {
-      accessToken: apiKey,
-      tokenType: 'Bearer',
-    };
-  }
-
-  return null;
+			// Try a read operation to verify keychain access
+			// This will throw if native module is not built
+			await keytar.getPassword(KEYCHAIN_SERVICE, '__test__')
+			return true
+		} catch (error) {
+			if (getEnv('DEBUG')) {
+				console.warn('Keychain not available:', error)
+			}
+			return false
+		}
+	}
 }
 
 /**
- * Check if keychain is disabled
+ * Secure file-based token storage for CLI
+ * Stores token in ~/.oauth.do/token with restricted permissions (0600)
+ *
+ * This is the default storage for Node.js CLI because it doesn't require
+ * GUI authorization popups like the keychain does on macOS.
+ * Only works in Node.js environment.
  */
-function isKeychainDisabled(options?: StorageOptions): boolean {
-  if (options?.disableKeychain) {
-    return true;
-  }
-  const envDisable = process.env[ENV_VARS.NO_KEYCHAIN];
-  return envDisable === '1' || envDisable === 'true';
-}
+export class SecureFileTokenStorage implements TokenStorage {
+	private tokenPath: string | null = null
+	private configDir: string | null = null
+	private initialized = false
+	private customPath?: string
 
-// ============================================================================
-// Keychain Storage
-// ============================================================================
+	constructor(customPath?: string) {
+		this.customPath = customPath
+	}
 
-/**
- * Get service and account names for keychain
- */
-function getKeychainNames(options?: StorageOptions): { service: string; account: string } {
-  return {
-    service: options?.serviceName || OAUTH_DEFAULTS.serviceName,
-    account: options?.accountName || OAUTH_DEFAULTS.accountName,
-  };
-}
+	private async init(): Promise<boolean> {
+		if (this.initialized) return this.tokenPath !== null
+		this.initialized = true
 
-/**
- * Store credential in system keychain
- */
-async function storeInKeychain(credential: StoredCredential, options?: StorageOptions): Promise<boolean> {
-  if (isKeychainDisabled(options)) {
-    return false;
-  }
+		if (!isNode()) return false
 
-  const keytar = await loadKeytar();
-  if (!keytar) {
-    return false;
-  }
+		try {
+			const os = await import('os')
+			const path = await import('path')
 
-  try {
-    const { service, account } = getKeychainNames(options);
-    const data = JSON.stringify(credential);
-    await keytar.setPassword(service, account, data);
-    return true;
-  } catch {
-    return false;
-  }
-}
+			// Use custom path if provided
+			if (this.customPath) {
+				// Expand ~ to home directory
+				const expandedPath = this.customPath.startsWith('~/')
+					? path.join(os.homedir(), this.customPath.slice(2))
+					: this.customPath
 
-/**
- * Get credential from system keychain
- */
-async function getFromKeychain(options?: StorageOptions): Promise<StoredCredential | null> {
-  if (isKeychainDisabled(options)) {
-    return null;
-  }
+				this.tokenPath = expandedPath
+				this.configDir = path.dirname(expandedPath)
+			} else {
+				// Default path
+				this.configDir = path.join(os.homedir(), '.oauth.do')
+				this.tokenPath = path.join(this.configDir, 'token')
+			}
+			return true
+		} catch {
+			return false
+		}
+	}
 
-  const keytar = await loadKeytar();
-  if (!keytar) {
-    return null;
-  }
+	async getToken(): Promise<string | null> {
+		// Try to get from token data first (new format)
+		const data = await this.getTokenData()
+		if (data) {
+			return data.accessToken
+		}
 
-  try {
-    const { service, account } = getKeychainNames(options);
-    const data = await keytar.getPassword(service, account);
-    if (!data) {
-      return null;
-    }
-    return JSON.parse(data) as StoredCredential;
-  } catch {
-    return null;
-  }
-}
+		// Fall back to legacy plain text format
+		if (!(await this.init()) || !this.tokenPath) return null
 
-/**
- * Delete credential from system keychain
- */
-async function deleteFromKeychain(options?: StorageOptions): Promise<boolean> {
-  if (isKeychainDisabled(options)) {
-    return false;
-  }
+		try {
+			const fs = await import('fs/promises')
+			const stats = await fs.stat(this.tokenPath)
+			const mode = stats.mode & 0o777
 
-  const keytar = await loadKeytar();
-  if (!keytar) {
-    return false;
-  }
+			if (mode !== 0o600 && getEnv('DEBUG')) {
+				console.warn(
+					`Warning: Token file has insecure permissions (${mode.toString(8)}). ` +
+						`Expected 600. Run: chmod 600 ${this.tokenPath}`
+				)
+			}
 
-  try {
-    const { service, account } = getKeychainNames(options);
-    return await keytar.deletePassword(service, account);
-  } catch {
-    return false;
-  }
-}
+			const content = await fs.readFile(this.tokenPath, 'utf-8')
+			const trimmed = content.trim()
 
-// ============================================================================
-// File Storage (Fallback)
-// ============================================================================
+			// Check if it's JSON (new format) or plain token (legacy)
+			if (trimmed.startsWith('{')) {
+				const data = JSON.parse(trimmed) as StoredTokenData
+				return data.accessToken
+			}
 
-/**
- * Simple encryption for file storage (not as secure as keychain)
- */
-function encryptData(data: string): string {
-  // Use a machine-specific key derived from hostname and user
-  const machineKey = crypto
-    .createHash('sha256')
-    .update(`${os.hostname()}-${os.userInfo().username}-dotdo`)
-    .digest();
+			return trimmed
+		} catch {
+			return null
+		}
+	}
 
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-gcm', machineKey, iv);
+	async setToken(token: string): Promise<void> {
+		// Store as token data for consistency, trimming whitespace
+		await this.setTokenData({ accessToken: token.trim() })
+	}
 
-  let encrypted = cipher.update(data, 'utf8', 'base64');
-  encrypted += cipher.final('base64');
+	async getTokenData(): Promise<StoredTokenData | null> {
+		if (!(await this.init()) || !this.tokenPath) return null
 
-  const authTag = cipher.getAuthTag();
+		try {
+			const fs = await import('fs/promises')
+			const content = await fs.readFile(this.tokenPath, 'utf-8')
+			const trimmed = content.trim()
 
-  return JSON.stringify({
-    v: 1,
-    iv: iv.toString('base64'),
-    tag: authTag.toString('base64'),
-    data: encrypted,
-  });
-}
+			// Check if it's JSON format
+			if (trimmed.startsWith('{')) {
+				return JSON.parse(trimmed) as StoredTokenData
+			}
 
-/**
- * Decrypt file storage data
- */
-function decryptData(encrypted: string): string {
-  const parsed = JSON.parse(encrypted);
-  if (parsed.v !== 1) {
-    throw new Error('Unknown encryption version');
-  }
+			// Legacy plain text format - convert to token data
+			return { accessToken: trimmed }
+		} catch {
+			return null
+		}
+	}
 
-  const machineKey = crypto
-    .createHash('sha256')
-    .update(`${os.hostname()}-${os.userInfo().username}-dotdo`)
-    .digest();
+	async setTokenData(data: StoredTokenData): Promise<void> {
+		if (!(await this.init()) || !this.tokenPath || !this.configDir) {
+			throw new Error('File storage not available')
+		}
 
-  const iv = Buffer.from(parsed.iv, 'base64');
-  const authTag = Buffer.from(parsed.tag, 'base64');
-  const decipher = crypto.createDecipheriv('aes-256-gcm', machineKey, iv);
-  decipher.setAuthTag(authTag);
+		try {
+			const fs = await import('fs/promises')
+			await fs.mkdir(this.configDir, { recursive: true, mode: 0o700 })
+			await fs.writeFile(this.tokenPath, JSON.stringify(data), { encoding: 'utf-8', mode: 0o600 })
+			await fs.chmod(this.tokenPath, 0o600)
+		} catch (error) {
+			console.error('Failed to save token data:', error)
+			throw error
+		}
+	}
 
-  let decrypted = decipher.update(parsed.data, 'base64', 'utf8');
-  decrypted += decipher.final('utf8');
+	async removeToken(): Promise<void> {
+		if (!(await this.init()) || !this.tokenPath) return
 
-  return decrypted;
+		try {
+			const fs = await import('fs/promises')
+			await fs.unlink(this.tokenPath)
+		} catch {
+			// Ignore errors if file doesn't exist
+		}
+	}
+
+	/**
+	 * Get information about the storage backend
+	 */
+	async getStorageInfo(): Promise<{ type: 'file'; secure: boolean; path: string | null }> {
+		await this.init()
+		return { type: 'file', secure: true, path: this.tokenPath }
+	}
 }
 
 /**
- * Store credential in file
+ * File-based token storage for CLI (legacy, less secure)
+ * Stores token in ~/.oauth.do/token
+ * Only works in Node.js environment.
+ *
+ * @deprecated Use SecureFileTokenStorage or KeychainTokenStorage instead
  */
-function storeInFile(credential: StoredCredential, options?: StorageOptions): void {
-  ensureConfigDir(options);
-  const filePath = getCredentialsPath(options);
+export class FileTokenStorage implements TokenStorage {
+	private tokenPath: string | null = null
+	private configDir: string | null = null
+	private initialized = false
 
-  const encrypted = encryptData(JSON.stringify(credential));
-  fs.writeFileSync(filePath, encrypted, { mode: 0o600 });
+	private async init(): Promise<boolean> {
+		if (this.initialized) return this.tokenPath !== null
+		this.initialized = true
+
+		if (!isNode()) return false
+
+		try {
+			const os = await import('os')
+			const path = await import('path')
+			this.configDir = path.join(os.homedir(), '.oauth.do')
+			this.tokenPath = path.join(this.configDir, 'token')
+			return true
+		} catch {
+			return false
+		}
+	}
+
+	async getToken(): Promise<string | null> {
+		if (!(await this.init()) || !this.tokenPath) return null
+
+		try {
+			const fs = await import('fs/promises')
+			const token = await fs.readFile(this.tokenPath, 'utf-8')
+			return token.trim()
+		} catch {
+			return null
+		}
+	}
+
+	async setToken(token: string): Promise<void> {
+		if (!(await this.init()) || !this.tokenPath || !this.configDir) {
+			throw new Error('File storage not available')
+		}
+
+		try {
+			const fs = await import('fs/promises')
+			await fs.mkdir(this.configDir, { recursive: true })
+			await fs.writeFile(this.tokenPath, token, 'utf-8')
+		} catch (error) {
+			console.error('Failed to save token:', error)
+			throw error
+		}
+	}
+
+	async removeToken(): Promise<void> {
+		if (!(await this.init()) || !this.tokenPath) return
+
+		try {
+			const fs = await import('fs/promises')
+			await fs.unlink(this.tokenPath)
+		} catch {
+			// Ignore errors if file doesn't exist
+		}
+	}
 }
 
 /**
- * Get credential from file
+ * In-memory token storage (for browser or testing)
  */
-function getFromFile(options?: StorageOptions): StoredCredential | null {
-  const filePath = getCredentialsPath(options);
+export class MemoryTokenStorage implements TokenStorage {
+	private token: string | null = null
 
-  if (!fs.existsSync(filePath)) {
-    return null;
-  }
+	async getToken(): Promise<string | null> {
+		return this.token
+	}
 
-  try {
-    const encrypted = fs.readFileSync(filePath, 'utf8');
-    const decrypted = decryptData(encrypted);
-    return JSON.parse(decrypted) as StoredCredential;
-  } catch {
-    // Corrupted or unreadable file
-    return null;
-  }
+	async setToken(token: string): Promise<void> {
+		this.token = token
+	}
+
+	async removeToken(): Promise<void> {
+		this.token = null
+	}
 }
 
 /**
- * Delete credential file
+ * LocalStorage-based token storage (for browser)
  */
-function deleteFile(options?: StorageOptions): boolean {
-  const filePath = getCredentialsPath(options);
+export class LocalStorageTokenStorage implements TokenStorage {
+	private key = 'oauth.do:token'
 
-  if (!fs.existsSync(filePath)) {
-    return false;
-  }
+	async getToken(): Promise<string | null> {
+		if (typeof localStorage === 'undefined') {
+			return null
+		}
+		return localStorage.getItem(this.key)
+	}
 
-  try {
-    fs.unlinkSync(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
+	async setToken(token: string): Promise<void> {
+		if (typeof localStorage === 'undefined') {
+			throw new Error('localStorage is not available')
+		}
+		localStorage.setItem(this.key, token)
+	}
 
-// ============================================================================
-// Token Storage API
-// ============================================================================
-
-/**
- * Token storage manager
- */
-export class TokenStorage {
-  private options: StorageOptions;
-
-  constructor(options?: StorageOptions) {
-    this.options = options || {};
-  }
-
-  /**
-   * Store a token
-   */
-  async store(token: Token, source: StoredCredential['source'] = 'browser'): Promise<void> {
-    const credential: StoredCredential = {
-      token,
-      storedAt: Date.now(),
-      source,
-    };
-
-    // Try keychain first
-    const storedInKeychain = await storeInKeychain(credential, this.options);
-
-    // Always store in file as backup (useful for debugging)
-    if (!storedInKeychain) {
-      storeInFile(credential, this.options);
-    }
-  }
-
-  /**
-   * Get stored token
-   *
-   * Priority:
-   * 1. Environment variables
-   * 2. Keychain
-   * 3. File fallback
-   */
-  async get(): Promise<Token | null> {
-    // Check environment first
-    const envToken = getEnvToken();
-    if (envToken) {
-      return envToken;
-    }
-
-    // Try keychain
-    const keychainCredential = await getFromKeychain(this.options);
-    if (keychainCredential) {
-      return this.validateAndReturn(keychainCredential);
-    }
-
-    // Try file fallback
-    const fileCredential = getFromFile(this.options);
-    if (fileCredential) {
-      return this.validateAndReturn(fileCredential);
-    }
-
-    return null;
-  }
-
-  /**
-   * Get full stored credential with metadata
-   */
-  async getCredential(): Promise<StoredCredential | null> {
-    // Check environment first
-    const envToken = getEnvToken();
-    if (envToken) {
-      return {
-        token: envToken,
-        storedAt: Date.now(),
-        source: 'env',
-      };
-    }
-
-    // Try keychain
-    const keychainCredential = await getFromKeychain(this.options);
-    if (keychainCredential) {
-      return keychainCredential;
-    }
-
-    // Try file fallback
-    return getFromFile(this.options);
-  }
-
-  /**
-   * Delete stored token
-   */
-  async delete(): Promise<void> {
-    // Delete from both keychain and file
-    await deleteFromKeychain(this.options);
-    deleteFile(this.options);
-  }
-
-  /**
-   * Check if a token is stored
-   */
-  async has(): Promise<boolean> {
-    const token = await this.get();
-    return token !== null;
-  }
-
-  /**
-   * Check if the stored token is expired
-   */
-  async isExpired(): Promise<boolean> {
-    const credential = await this.getCredential();
-    if (!credential) {
-      return true;
-    }
-
-    const { token } = credential;
-    if (!token.expiresAt) {
-      return false; // No expiry = never expires
-    }
-
-    // Consider expired if within 5 minutes of expiry
-    const bufferSeconds = 300;
-    return token.expiresAt < Date.now() / 1000 + bufferSeconds;
-  }
-
-  /**
-   * Get storage location info
-   */
-  async getStorageInfo(): Promise<{
-    location: 'env' | 'keychain' | 'file' | 'none';
-    path?: string;
-    keychainAvailable: boolean;
-  }> {
-    const keytar = await loadKeytar();
-    const keychainAvailable = keytar !== null && !isKeychainDisabled(this.options);
-
-    // Check environment
-    if (getEnvToken()) {
-      return { location: 'env', keychainAvailable };
-    }
-
-    // Check keychain
-    if (keychainAvailable) {
-      const keychainCredential = await getFromKeychain(this.options);
-      if (keychainCredential) {
-        return { location: 'keychain', keychainAvailable };
-      }
-    }
-
-    // Check file
-    const filePath = getCredentialsPath(this.options);
-    if (fs.existsSync(filePath)) {
-      return { location: 'file', path: filePath, keychainAvailable };
-    }
-
-    return { location: 'none', keychainAvailable };
-  }
-
-  /**
-   * Validate token and return if valid
-   */
-  private validateAndReturn(credential: StoredCredential): Token | null {
-    const { token } = credential;
-
-    // Check if expired
-    if (token.expiresAt && token.expiresAt < Date.now() / 1000) {
-      // Token is expired but we still return it - caller can try refresh
-      // We mark this by checking expiresAt
-    }
-
-    return token;
-  }
-}
-
-// ============================================================================
-// Default Instance
-// ============================================================================
-
-let defaultStorage: TokenStorage | undefined;
-
-/**
- * Get the default token storage instance
- */
-export function getStorage(options?: StorageOptions): TokenStorage {
-  if (!defaultStorage || options) {
-    defaultStorage = new TokenStorage(options);
-  }
-  return defaultStorage;
-}
-
-// ============================================================================
-// Convenience Functions
-// ============================================================================
-
-/**
- * Store a token using default storage
- */
-export async function storeToken(token: Token, source?: StoredCredential['source']): Promise<void> {
-  return getStorage().store(token, source);
+	async removeToken(): Promise<void> {
+		if (typeof localStorage === 'undefined') {
+			return
+		}
+		localStorage.removeItem(this.key)
+	}
 }
 
 /**
- * Get stored token using default storage
+ * Composite token storage that tries multiple storage backends
+ * Attempts keychain first, then falls back to secure file storage
  */
-export async function getToken(): Promise<Token | null> {
-  return getStorage().get();
+export class CompositeTokenStorage implements TokenStorage {
+	private keychainStorage: KeychainTokenStorage
+	private fileStorage: SecureFileTokenStorage
+	private preferredStorage: TokenStorage | null = null
+
+	constructor() {
+		this.keychainStorage = new KeychainTokenStorage()
+		this.fileStorage = new SecureFileTokenStorage()
+	}
+
+	/**
+	 * Determine the best available storage backend
+	 */
+	private async getPreferredStorage(): Promise<TokenStorage> {
+		if (this.preferredStorage) {
+			return this.preferredStorage
+		}
+
+		// Try keychain first
+		if (await this.keychainStorage.isAvailable()) {
+			this.preferredStorage = this.keychainStorage
+			return this.preferredStorage
+		}
+
+		// Fall back to secure file storage
+		this.preferredStorage = this.fileStorage
+		return this.preferredStorage
+	}
+
+	async getToken(): Promise<string | null> {
+		// First, check keychain
+		const keychainToken = await this.keychainStorage.getToken()
+		if (keychainToken) {
+			return keychainToken
+		}
+
+		// Fall back to file storage (for migration from old installations)
+		const fileToken = await this.fileStorage.getToken()
+		if (fileToken) {
+			// Migrate token to keychain if available
+			if (await this.keychainStorage.isAvailable()) {
+				try {
+					await this.keychainStorage.setToken(fileToken)
+					await this.fileStorage.removeToken()
+					if (getEnv('DEBUG')) {
+						console.log('Migrated token from file to keychain')
+					}
+				} catch {
+					// Continue with file token if migration fails
+				}
+			}
+			return fileToken
+		}
+
+		return null
+	}
+
+	async setToken(token: string): Promise<void> {
+		const storage = await this.getPreferredStorage()
+		await storage.setToken(token)
+	}
+
+	async removeToken(): Promise<void> {
+		// Remove from both storages to ensure complete logout
+		await Promise.all([this.keychainStorage.removeToken(), this.fileStorage.removeToken()])
+	}
+
+	/**
+	 * Get information about the current storage backend
+	 */
+	async getStorageInfo(): Promise<{ type: 'keychain' | 'file'; secure: boolean }> {
+		if (await this.keychainStorage.isAvailable()) {
+			return { type: 'keychain', secure: true }
+		}
+		return { type: 'file', secure: true }
+	}
 }
 
 /**
- * Delete stored token using default storage
+ * Create the default token storage
+ * - Node.js: Uses secure file storage (~/.oauth.do/token with 0600 permissions)
+ * - Browser: Uses localStorage
+ * - Worker: Uses in-memory storage (tokens should be passed via env bindings)
+ *
+ * Note: We use file storage by default because keychain storage on macOS
+ * requires GUI authorization popups, which breaks automation and agent workflows.
+ *
+ * @param storagePath - Optional custom path for token storage (e.g., '~/.studio/tokens.json')
  */
-export async function deleteToken(): Promise<void> {
-  return getStorage().delete();
-}
+export function createSecureStorage(storagePath?: string): TokenStorage {
+	// Node.js - use secure file storage (no keychain popups)
+	if (isNode()) {
+		return new SecureFileTokenStorage(storagePath)
+	}
 
-/**
- * Check if token is stored using default storage
- */
-export async function hasToken(): Promise<boolean> {
-  return getStorage().has();
+	// Browser - use localStorage
+	if (typeof localStorage !== 'undefined') {
+		return new LocalStorageTokenStorage()
+	}
+
+	// Workers/other - use memory storage
+	return new MemoryTokenStorage()
 }

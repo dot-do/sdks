@@ -1,433 +1,365 @@
-/**
- * oauth.do - Core authentication logic
- *
- * This module provides the main authentication API:
- * - ensureLoggedIn() - Check if logged in, prompt if not
- * - getToken() - Get token without prompting
- * - isAuthenticated() - Check auth status
- * - logout() - Clear stored tokens
- * - whoami() - Get current user info
- */
-
-import type {
-  Token,
-  User,
-  AuthOptions,
-  StorageOptions,
-  AuthEvent,
-  AuthEventListener,
-} from './types.js';
-import { AuthError, OAUTH_DEFAULTS, ENV_VARS } from './types.js';
-import { TokenStorage, getStorage, getEnvToken } from './storage.js';
-import { browserFlow, refreshToken, revokeToken } from './browser.js';
-import { deviceFlow, canUseBrowserFlow, type DeviceFlowOptions } from './device.js';
-
-// ============================================================================
-// Event System
-// ============================================================================
-
-const eventListeners: Set<AuthEventListener> = new Set();
+import { getConfig } from './config.js'
+import type { User, AuthResult, TokenResponse, StoredTokenData } from './types.js'
 
 /**
- * Emit an authentication event
+ * Resolve a secret that could be a plain string or a secrets store binding
+ * Secrets store bindings have a .get() method that returns a Promise<string>
+ * @see https://developers.cloudflare.com/workers/configuration/secrets/#secrets-store
  */
-function emitEvent(event: AuthEvent): void {
-  for (const listener of eventListeners) {
-    try {
-      listener(event);
-    } catch {
-      // Ignore listener errors
-    }
-  }
+async function resolveSecret(value: unknown): Promise<string | null> {
+	if (!value) return null
+	if (typeof value === 'string') return value
+	if (typeof value === 'object' && typeof (value as any).get === 'function') {
+		return await (value as any).get()
+	}
+	return null
 }
 
 /**
- * Add an authentication event listener
+ * Safe environment variable access (works in Node, browser, and Workers)
  */
-export function onAuthEvent(listener: AuthEventListener): () => void {
-  eventListeners.add(listener);
-  return () => eventListeners.delete(listener);
+function getEnv(key: string): string | undefined {
+	// Check globalThis first (Workers)
+	if ((globalThis as any)[key]) return (globalThis as any)[key]
+	// Check process.env (Node.js)
+	if (typeof process !== 'undefined' && process.env?.[key]) return process.env[key]
+	return undefined
 }
 
-// ============================================================================
-// Token Management
-// ============================================================================
-
 /**
- * Ensure we have a valid token, refreshing if needed
+ * Get current authenticated user
+ * Calls GET /me endpoint
+ *
+ * @param token - Optional authentication token (will use DO_TOKEN env var if not provided)
+ * @returns Authentication result with user info or null if not authenticated
  */
-async function ensureValidToken(
-  token: Token,
-  options: AuthOptions = {},
-  storage: TokenStorage
-): Promise<Token> {
-  // Check if token is expired or about to expire
-  if (token.expiresAt) {
-    const now = Math.floor(Date.now() / 1000);
-    const bufferSeconds = 300; // 5 minute buffer
+export async function getUser(token?: string): Promise<AuthResult> {
+	const config = getConfig()
+	const authToken = token || getEnv('DO_TOKEN') || ''
 
-    if (token.expiresAt < now + bufferSeconds) {
-      // Try to refresh
-      if (token.refreshToken) {
-        try {
-          const newToken = await refreshToken(token, options);
-          await storage.store(newToken, 'browser');
-          emitEvent({ type: 'token_refreshed', timestamp: Date.now() });
-          return newToken;
-        } catch (err) {
-          // Refresh failed - token is expired
-          emitEvent({
-            type: 'token_expired',
-            timestamp: Date.now(),
-            error: err instanceof AuthError ? err : new AuthError('Token refresh failed', 'REFRESH_FAILED'),
-          });
-          throw new AuthError(
-            'Token expired and refresh failed. Please login again.',
-            'TOKEN_EXPIRED',
-            { cause: err as Error }
-          );
-        }
-      } else {
-        // No refresh token - expired
-        throw new AuthError(
-          'Token expired. Please login again.',
-          'TOKEN_EXPIRED'
-        );
-      }
-    }
-  }
+	if (!authToken) {
+		return { user: null }
+	}
 
-  return token;
+	try {
+		const response = await config.fetch(`${config.apiUrl}/me`, {
+			method: 'GET',
+			headers: {
+				'Authorization': `Bearer ${authToken}`,
+				'Content-Type': 'application/json',
+			},
+		})
+
+		if (!response.ok) {
+			if (response.status === 401) {
+				return { user: null }
+			}
+			throw new Error(`Authentication failed: ${response.statusText}`)
+		}
+
+		const user = (await response.json()) as User
+		return { user, token: authToken }
+	} catch (error) {
+		console.error('Auth error:', error)
+		return { user: null }
+	}
 }
 
-// ============================================================================
-// Core Auth Functions
-// ============================================================================
+/**
+ * Initiate login flow
+ * Calls POST /login endpoint
+ *
+ * @param credentials - Login credentials (email, password, etc.)
+ * @returns Authentication result with user info and token
+ */
+export async function login(credentials: {
+	email?: string
+	password?: string
+	[key: string]: any
+}): Promise<AuthResult> {
+	const config = getConfig()
+
+	try {
+		const response = await config.fetch(`${config.apiUrl}/login`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify(credentials),
+		})
+
+		if (!response.ok) {
+			throw new Error(`Login failed: ${response.statusText}`)
+		}
+
+		const data = (await response.json()) as { user: User; token: string }
+		return { user: data.user, token: data.token }
+	} catch (error) {
+		console.error('Login error:', error)
+		throw error
+	}
+}
 
 /**
- * Ensure the user is logged in
+ * Logout current user
+ * Calls POST /logout endpoint
  *
- * If already authenticated, returns the existing token (refreshing if needed).
- * If not authenticated, initiates the appropriate login flow.
+ * @param token - Optional authentication token (will use DO_TOKEN env var if not provided)
+ */
+export async function logout(token?: string): Promise<void> {
+	const config = getConfig()
+	const authToken = token || getEnv('DO_TOKEN') || ''
+
+	if (!authToken) {
+		return
+	}
+
+	try {
+		const response = await config.fetch(`${config.apiUrl}/logout`, {
+			method: 'POST',
+			headers: {
+				'Authorization': `Bearer ${authToken}`,
+				'Content-Type': 'application/json',
+			},
+		})
+
+		if (!response.ok) {
+			console.warn(`Logout warning: ${response.statusText}`)
+		}
+	} catch (error) {
+		console.error('Logout error:', error)
+	}
+}
+
+// Buffer time before expiration to trigger refresh (5 minutes)
+const REFRESH_BUFFER_MS = 5 * 60 * 1000
+
+/**
+ * Check if token is expired or about to expire
+ */
+function isTokenExpired(expiresAt?: number): boolean {
+	if (!expiresAt) return false // Can't determine, assume valid
+	return Date.now() >= expiresAt - REFRESH_BUFFER_MS
+}
+
+/**
+ * Get token from environment or stored credentials
  *
- * @param options - Authentication options
- * @returns Valid access token
+ * Checks in order:
+ * 1. globalThis.DO_ADMIN_TOKEN / DO_TOKEN (Workers legacy)
+ * 2. process.env.DO_ADMIN_TOKEN / DO_TOKEN (Node.js)
+ * 3. cloudflare:workers env import (Workers 2025+) - supports secrets store bindings
+ * 4. Stored token (keychain/secure file) - with automatic refresh if expired
+ *
+ * @see https://developers.cloudflare.com/changelog/2025-03-17-importable-env/
+ */
+export async function getToken(): Promise<string | null> {
+	// Check env vars first (globalThis for Workers legacy, process.env for Node)
+	const adminToken = getEnv('DO_ADMIN_TOKEN')
+	if (adminToken) return adminToken
+	const doToken = getEnv('DO_TOKEN')
+	if (doToken) return doToken
+
+	// Try cloudflare:workers env import (Workers 2025+)
+	// Supports both plain strings and secrets store bindings
+	try {
+		// @ts-ignore - cloudflare:workers only available in Workers runtime
+		const { env } = await import('cloudflare:workers')
+
+		const cfAdminToken = await resolveSecret((env as any).DO_ADMIN_TOKEN)
+		if (cfAdminToken) return cfAdminToken
+
+		const cfToken = await resolveSecret((env as any).DO_TOKEN)
+		if (cfToken) return cfToken
+	} catch {
+		// Not in Workers environment or env not available
+	}
+
+	// Try stored token (Node.js only - uses keychain/file storage)
+	try {
+		const { createSecureStorage } = await import('./storage.js')
+		const config = getConfig()
+		const storage = createSecureStorage(config.storagePath)
+
+		// Get full token data if available
+		const tokenData = storage.getTokenData ? await storage.getTokenData() : null
+
+		if (tokenData) {
+			// If token is not expired, return it
+			if (!isTokenExpired(tokenData.expiresAt)) {
+				return tokenData.accessToken
+			}
+
+			// Token is expired - try to refresh if we have a refresh token
+			if (tokenData.refreshToken) {
+				try {
+					const newTokens = await refreshAccessToken(tokenData.refreshToken)
+
+					// Calculate new expiration time
+					const expiresAt = newTokens.expires_in
+						? Date.now() + newTokens.expires_in * 1000
+						: undefined
+
+					// Store new token data
+					const newData: StoredTokenData = {
+						accessToken: newTokens.access_token,
+						refreshToken: newTokens.refresh_token || tokenData.refreshToken,
+						expiresAt,
+					}
+
+					if (storage.setTokenData) {
+						await storage.setTokenData(newData)
+					} else {
+						await storage.setToken(newTokens.access_token)
+					}
+
+					return newTokens.access_token
+				} catch {
+					// Refresh failed - return null (caller should re-authenticate)
+					return null
+				}
+			}
+
+			// Expired but no refresh token - return null
+			return null
+		}
+
+		// Fall back to simple token storage (no expiration tracking)
+		return await storage.getToken()
+	} catch {
+		// Storage not available (browser/worker) - return null
+		return null
+	}
+}
+
+/**
+ * Check if user is authenticated (has valid token)
+ */
+export async function isAuthenticated(token?: string): Promise<boolean> {
+	const result = await getUser(token)
+	return result.user !== null
+}
+
+/**
+ * Auth provider function type for HTTP clients
+ */
+export type AuthProvider = () => string | null | undefined | Promise<string | null | undefined>
+
+/**
+ * Create an auth provider function for HTTP clients (apis.do, rpc.do)
+ * Returns a function that resolves to a token string
  *
  * @example
- * ```ts
- * // Basic usage - will prompt for login if needed
- * const token = await ensureLoggedIn();
- *
- * // Force re-authentication
- * const token = await ensureLoggedIn({ force: true });
- *
- * // Prefer device flow for CI environments
- * const token = await ensureLoggedIn({ flow: 'device' });
- * ```
+ * import { auth } from 'oauth.do'
+ * const getAuth = auth()
+ * const token = await getAuth()
  */
-export async function ensureLoggedIn(options: AuthOptions & DeviceFlowOptions = {}): Promise<Token> {
-  const storage = getStorage();
-
-  // Check for forced re-authentication
-  if (!options.force) {
-    // Try to get existing token
-    const existingToken = await storage.get();
-    if (existingToken) {
-      try {
-        return await ensureValidToken(existingToken, options, storage);
-      } catch (err) {
-        // Token is invalid/expired and couldn't refresh - continue to login
-        if ((err as AuthError).code !== 'TOKEN_EXPIRED') {
-          throw err;
-        }
-      }
-    }
-  }
-
-  // Emit login started event
-  emitEvent({ type: 'login_started', timestamp: Date.now() });
-
-  // Determine which flow to use
-  let token: Token;
-  const flow = options.flow || 'auto';
-
-  try {
-    if (flow === 'browser' || (flow === 'auto' && canUseBrowserFlow())) {
-      token = await browserFlow(options);
-    } else {
-      token = await deviceFlow(options);
-    }
-
-    // Store the token
-    await storage.store(token, flow === 'device' ? 'device' : 'browser');
-
-    // Emit success event
-    emitEvent({ type: 'login_success', timestamp: Date.now() });
-
-    return token;
-  } catch (err) {
-    // Emit failure event
-    emitEvent({
-      type: 'login_failed',
-      timestamp: Date.now(),
-      error: err instanceof AuthError ? err : new AuthError('Login failed', 'UNKNOWN', { cause: err as Error }),
-    });
-    throw err;
-  }
+export function auth(): AuthProvider {
+	return getToken
 }
 
 /**
- * Get the current access token without prompting for login
+ * Refresh an access token using a refresh token
  *
- * @returns Token if authenticated
- * @throws AuthError with code 'NOT_AUTHENTICATED' if not logged in
+ * @param refreshToken - The refresh token from the original auth response
+ * @returns New token response with fresh access_token (and possibly new refresh_token)
+ */
+export async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
+	const config = getConfig()
+
+	if (!config.clientId) {
+		throw new Error('Client ID is required for token refresh')
+	}
+
+	const response = await config.fetch('https://auth.apis.do/user_management/authenticate', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/x-www-form-urlencoded',
+		},
+		body: new URLSearchParams({
+			grant_type: 'refresh_token',
+			refresh_token: refreshToken,
+			client_id: config.clientId,
+		}).toString(),
+	})
+
+	if (!response.ok) {
+		const errorText = await response.text()
+		throw new Error(`Token refresh failed: ${response.status} - ${errorText}`)
+	}
+
+	return (await response.json()) as TokenResponse
+}
+
+/**
+ * Get stored token data from storage
+ */
+export async function getStoredTokenData(): Promise<StoredTokenData | null> {
+	try {
+		const { createSecureStorage } = await import('./storage.js')
+		const config = getConfig()
+		const storage = createSecureStorage(config.storagePath)
+		if (storage.getTokenData) {
+			return await storage.getTokenData()
+		}
+		// Fall back to just access token
+		const token = await storage.getToken()
+		return token ? { accessToken: token } : null
+	} catch {
+		return null
+	}
+}
+
+/**
+ * Store token data including refresh token
+ */
+export async function storeTokenData(data: StoredTokenData): Promise<void> {
+	try {
+		const { createSecureStorage } = await import('./storage.js')
+		const config = getConfig()
+		const storage = createSecureStorage(config.storagePath)
+		if (storage.setTokenData) {
+			await storage.setTokenData(data)
+		} else {
+			await storage.setToken(data.accessToken)
+		}
+	} catch (error) {
+		console.error('Failed to store token data:', error)
+		throw error
+	}
+}
+
+/**
+ * Build OAuth authorization URL
  *
  * @example
- * ```ts
- * try {
- *   const token = await getToken();
- *   // Use token for API calls
- * } catch (err) {
- *   if (err.code === 'NOT_AUTHENTICATED') {
- *     console.log('Please run: dotdo login');
- *   }
- * }
- * ```
+ * const url = buildAuthUrl({
+ *   redirectUri: 'https://myapp.com/callback',
+ *   scope: 'openid profile email',
+ * })
  */
-export async function getToken(): Promise<Token> {
-  const storage = getStorage();
-  const token = await storage.get();
+export function buildAuthUrl(options: {
+	redirectUri: string
+	scope?: string
+	state?: string
+	responseType?: string
+	clientId?: string
+	authDomain?: string
+}): string {
+	const config = getConfig()
+	const clientId = options.clientId || config.clientId
+	const authDomain = options.authDomain || config.authKitDomain
 
-  if (!token) {
-    throw new AuthError(
-      'Not authenticated. Please login first.',
-      'NOT_AUTHENTICATED'
-    );
-  }
+	const params = new URLSearchParams({
+		client_id: clientId,
+		redirect_uri: options.redirectUri,
+		response_type: options.responseType || 'code',
+		scope: options.scope || 'openid profile email',
+	})
 
-  // Try to ensure token is valid
-  try {
-    return await ensureValidToken(token, {}, storage);
-  } catch (err) {
-    // If refresh failed, return the potentially expired token
-    // Let the caller handle the 401
-    if ((err as AuthError).code === 'TOKEN_EXPIRED' && token.refreshToken) {
-      return token;
-    }
-    throw err;
-  }
-}
+	if (options.state) {
+		params.set('state', options.state)
+	}
 
-/**
- * Check if the user is currently authenticated
- *
- * @returns true if authenticated with a valid (or refreshable) token
- *
- * @example
- * ```ts
- * if (await isAuthenticated()) {
- *   console.log('Already logged in');
- * } else {
- *   console.log('Please login');
- * }
- * ```
- */
-export async function isAuthenticated(): Promise<boolean> {
-  const storage = getStorage();
-  const token = await storage.get();
-
-  if (!token) {
-    return false;
-  }
-
-  // Check if token is expired
-  if (token.expiresAt) {
-    const now = Math.floor(Date.now() / 1000);
-    if (token.expiresAt < now) {
-      // Expired - but can refresh?
-      return !!token.refreshToken;
-    }
-  }
-
-  return true;
-}
-
-/**
- * Logout and clear all stored tokens
- *
- * @param options - Auth options for token revocation
- *
- * @example
- * ```ts
- * await logout();
- * console.log('Logged out successfully');
- * ```
- */
-export async function logout(options: AuthOptions = {}): Promise<void> {
-  const storage = getStorage();
-
-  // Get current token for revocation
-  const token = await storage.get();
-
-  // Revoke token on server (best effort)
-  if (token && !getEnvToken()) {
-    // Don't revoke env tokens
-    await revokeToken(token, options);
-  }
-
-  // Clear stored credentials
-  await storage.delete();
-
-  // Emit logout event
-  emitEvent({ type: 'logout', timestamp: Date.now() });
-}
-
-/**
- * Get information about the currently authenticated user
- *
- * @returns User info if authenticated, null otherwise
- *
- * @example
- * ```ts
- * const user = await whoami();
- * if (user) {
- *   console.log(`Logged in as ${user.email}`);
- * } else {
- *   console.log('Not logged in');
- * }
- * ```
- */
-export async function whoami(options: AuthOptions = {}): Promise<User | null> {
-  const storage = getStorage();
-  const token = await storage.get();
-
-  if (!token) {
-    return null;
-  }
-
-  // Fetch user info from userinfo endpoint
-  const authServer = options.authServer || OAUTH_DEFAULTS.authServer;
-  const userinfoUrl = `${authServer}/userinfo`;
-
-  try {
-    const response = await fetch(userinfoUrl, {
-      headers: {
-        Authorization: `${token.tokenType} ${token.accessToken}`,
-      },
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        // Token is invalid
-        return null;
-      }
-      throw new AuthError(
-        `Failed to fetch user info: ${response.statusText}`,
-        'NETWORK_ERROR',
-        { status: response.status }
-      );
-    }
-
-    const data = await response.json();
-
-    return {
-      id: data.sub,
-      email: data.email,
-      name: data.name,
-      avatarUrl: data.picture,
-      emailVerified: data.email_verified ?? false,
-      createdAt: data.created_at,
-      workspace: data.workspace
-        ? {
-            id: data.workspace.id,
-            name: data.workspace.name,
-            slug: data.workspace.slug,
-            role: data.workspace.role,
-          }
-        : undefined,
-    };
-  } catch (err) {
-    if (err instanceof AuthError) {
-      throw err;
-    }
-    throw new AuthError(
-      'Failed to fetch user info',
-      'NETWORK_ERROR',
-      { cause: err as Error }
-    );
-  }
-}
-
-// ============================================================================
-// Additional Utilities
-// ============================================================================
-
-/**
- * Get the authorization header for API requests
- *
- * @returns Authorization header value or null if not authenticated
- *
- * @example
- * ```ts
- * const auth = await getAuthHeader();
- * if (auth) {
- *   fetch(url, { headers: { Authorization: auth } });
- * }
- * ```
- */
-export async function getAuthHeader(): Promise<string | null> {
-  try {
-    const token = await getToken();
-    return `${token.tokenType} ${token.accessToken}`;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Get storage information
- */
-export async function getStorageInfo(): Promise<{
-  isAuthenticated: boolean;
-  tokenSource: 'env' | 'keychain' | 'file' | 'none';
-  tokenPath?: string;
-  keychainAvailable: boolean;
-  expiresAt?: Date;
-  scopes?: string[];
-}> {
-  const storage = getStorage();
-  const storageInfo = await storage.getStorageInfo();
-  const credential = await storage.getCredential();
-
-  return {
-    isAuthenticated: credential !== null,
-    tokenSource: storageInfo.location,
-    tokenPath: storageInfo.path,
-    keychainAvailable: storageInfo.keychainAvailable,
-    expiresAt: credential?.token.expiresAt
-      ? new Date(credential.token.expiresAt * 1000)
-      : undefined,
-    scopes: credential?.token.scopes,
-  };
-}
-
-/**
- * Login with specific flow (convenience wrapper)
- */
-export async function login(options: AuthOptions & DeviceFlowOptions = {}): Promise<Token> {
-  return ensureLoggedIn({ ...options, force: true });
-}
-
-/**
- * Login with browser flow
- */
-export async function loginWithBrowser(options: AuthOptions = {}): Promise<Token> {
-  return ensureLoggedIn({ ...options, flow: 'browser', force: true });
-}
-
-/**
- * Login with device code flow
- */
-export async function loginWithDeviceCode(options: DeviceFlowOptions = {}): Promise<Token> {
-  return ensureLoggedIn({ ...options, flow: 'device', force: true });
+	return `https://${authDomain}/authorize?${params.toString()}`
 }
