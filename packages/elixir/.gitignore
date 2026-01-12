@@ -1,0 +1,36 @@
+# Build artifacts
+/_build/
+/deps/
+/doc/
+
+# Generated coverage output
+/cover/
+
+# PLT files for Dialyzer
+/priv/plts/
+*.plt
+*.plt.hash
+
+# Mix.lock (optional - remove if you want to track it)
+# /mix.lock
+
+# Node modules (if using Phoenix assets)
+/assets/node_modules/
+
+# Editor/IDE
+.elixir_ls/
+.idea/
+*.swp
+*.swo
+*~
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+/tmp/
+
+# Crash dumps
+erl_crash.dump

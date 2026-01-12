@@ -1,0 +1,187 @@
+# Map/Remap Tests
+# These tests verify the magic .map() operation for server-side collection transformation
+# This is a KEY feature that eliminates N+1 round trips
+
+name: Map Operation (remap)
+description: Verify server-side collection mapping reduces round trips
+
+tests:
+  # Basic map over arrays
+  - name: map_fibonacci_square
+    description: Map square() over Fibonacci array - single round trip
+    call: generateFibonacci
+    args: [6]
+    map:
+      # Each element gets squared
+      # fib(6) = [0, 1, 1, 2, 3, 5]
+      # squared = [0, 1, 1, 4, 9, 25]
+      expression: "x => self.square(x)"
+      captures: ["$self"]
+    expect: [0, 1, 1, 4, 9, 25]
+    max_round_trips: 1
+
+  - name: map_fibonacci_double
+    description: Map doubling over Fibonacci array
+    call: generateFibonacci
+    args: [5]
+    map:
+      expression: "x => self.returnNumber(x * 2)"
+      captures: ["$self"]
+    # fib(5) = [0, 1, 1, 2, 3] -> [0, 2, 2, 4, 6]
+    expect: [0, 2, 2, 4, 6]
+    max_round_trips: 1
+
+  # Map creating capabilities
+  - name: map_create_counters
+    description: Map to create Counter for each Fibonacci number
+    call: generateFibonacci
+    args: [4]
+    map:
+      # Create a counter initialized to each fib number
+      expression: "x => self.makeCounter(x)"
+      captures: ["$self"]
+    expect_type: array_of_capabilities
+    expect_length: 4
+    max_round_trips: 1
+
+  - name: map_counter_values
+    description: Map over array of counters to get values
+    setup:
+      - call: generateFibonacci
+        args: [5]
+        map:
+          expression: "x => self.makeCounter(x)"
+          captures: ["$self"]
+        as: counters
+        await: true
+    call: "$counters"
+    map:
+      expression: "counter => counter.value"
+    # fib(5) = [0, 1, 1, 2, 3]
+    expect: [0, 1, 1, 2, 3]
+
+  # Map on null/undefined (edge cases)
+  - name: map_on_null
+    description: Map on null returns null (no error)
+    call: returnNull
+    args: []
+    map:
+      expression: "x => self.square(x)"
+      captures: ["$self"]
+    expect: null
+
+  - name: map_on_undefined
+    description: Map on undefined returns null
+    call: returnUndefined
+    args: []
+    map:
+      expression: "x => self.square(x)"
+      captures: ["$self"]
+    expect: null
+
+  # Map on single values
+  - name: map_on_number
+    description: Map on single number applies transform
+    call: returnNumber
+    args: [7]
+    map:
+      expression: "x => self.square(x)"
+      captures: ["$self"]
+    expect: 49
+
+  - name: map_on_number_with_counter
+    description: Map creating counter from single number
+    call: returnNumber
+    args: [42]
+    map:
+      expression: "x => self.makeCounter(x)"
+      captures: ["$self"]
+    expect_type: capability
+    verify:
+      - call: result.value
+        expect: 42
+
+  # Nested map (map within map)
+  - name: nested_map
+    description: Nested map - map over array, then map over inner results
+    call: generateFibonacci
+    args: [4]
+    map:
+      # For each fib number, generate a smaller fib sequence and sum it
+      expression: "n => self.generateFibonacci(n)"
+      captures: ["$self"]
+    # fib(4) = [0, 1, 1, 2]
+    # map: [fib(0), fib(1), fib(1), fib(2)]
+    # = [[], [0], [0], [0, 1]]
+    expect:
+      - []
+      - [0]
+      - [0]
+      - [0, 1]
+    max_round_trips: 1
+
+  # Map with increment (stateful)
+  - name: map_increment_counters
+    description: Map increment over array of counters
+    setup:
+      # Create counters with values [0, 1, 2, 3, 4]
+      - call: generateFibonacci
+        args: [5]
+        await: true
+        as: fibs
+      - pipeline:
+          - call: "$fibs"
+            map:
+              expression: "x => self.makeCounter(x)"
+              captures: ["$self"]
+        as: counters
+        await: true
+    # Increment each counter by 10
+    call: "$counters"
+    map:
+      expression: "c => c.increment(10)"
+    # [0+10, 1+10, 1+10, 2+10, 3+10] = [10, 11, 11, 12, 13]
+    expect: [10, 11, 11, 12, 13]
+
+  # Empty array map
+  - name: map_empty_array
+    description: Map over empty array returns empty array
+    call: generateFibonacci
+    args: [0]
+    map:
+      expression: "x => self.square(x)"
+      captures: ["$self"]
+    expect: []
+    max_round_trips: 1
+
+  # Map preserving order
+  - name: map_preserves_order
+    description: Map preserves array order
+    call: generateFibonacci
+    args: [8]
+    map:
+      expression: "x => self.returnNumber(x)"
+      captures: ["$self"]
+    # fib(8) = [0, 1, 1, 2, 3, 5, 8, 13]
+    expect: [0, 1, 1, 2, 3, 5, 8, 13]
+    max_round_trips: 1
+
+# Language-specific map syntax equivalents:
+#
+# TypeScript:  arr.map(x => api.square(x))
+# Python:      arr.map(lambda x: api.square(x))
+# Rust:        arr.map(|x| api.square(x))
+# Go:          arr.Map(func(x int) int { return api.Square(x) })
+# Java:        arr.map(x -> api.square(x))
+# Ruby:        arr.remap { |x| api.square(x) }
+# Swift:       arr.map { x in api.square(x) }
+# Kotlin:      arr.map { api.square(it) }
+# C#:          arr.Select(x => api.Square(x))  // LINQ
+# Dart:        arr.map((x) => api.square(x))
+# Scala:       arr.map(x => api.square(x))
+# Elixir:      arr |> CapnWeb.map(fn x -> Api.square(x) end)
+# F#:          arr |> Rpc.serverMap (fun x -> api?square(x))
+# Clojure:     (rpc/rmap arr (fn [x] (-> api (rpc/square x))))
+# PHP:         $arr->map(fn($x) => $api->square($x))
+# Crystal:     arr.remap { |x| api.square(x) }
+# Nim:         arr.remap(proc(x: int): int = api.square(x))

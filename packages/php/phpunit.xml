@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache"
+         executionOrder="depends,defects"
+         failOnRisky="true"
+         failOnWarning="true"
+         beStrictAboutOutputDuringTests="true"
+         displayDetailsOnTestsThatTriggerDeprecations="true"
+         displayDetailsOnTestsThatTriggerWarnings="true"
+         displayDetailsOnTestsThatTriggerErrors="true"
+         displayDetailsOnTestsThatTriggerNotices="true">
+    <testsuites>
+        <testsuite name="default">
+            <directory>tests</directory>
+        </testsuite>
+        <testsuite name="conformance">
+            <directory>tests</directory>
+            <file>tests/ConformanceTest.php</file>
+        </testsuite>
+    </testsuites>
+
+    <php>
+        <env name="TEST_SERVER_URL" value="ws://localhost:8080"/>
+        <env name="TEST_SPEC_DIR" value="../../test/conformance"/>
+    </php>
+
+    <groups>
+        <include>
+            <group>conformance</group>
+            <group>basic</group>
+            <group>map</group>
+            <group>pipelining</group>
+        </include>
+    </groups>
+
+    <source>
+        <include>
+            <directory>src</directory>
+        </include>
+    </source>
+
+    <coverage>
+        <report>
+            <html outputDirectory=".phpunit.cache/coverage"/>
+            <text outputFile="php://stdout"/>
+        </report>
+    </coverage>
+</phpunit>
