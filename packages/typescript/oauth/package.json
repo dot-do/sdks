@@ -12,14 +12,12 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.js",
-      "default": "./dist/index.js"
+      "require": "./dist/index.cjs"
     },
     "./node": {
       "types": "./dist/node.d.ts",
       "import": "./dist/node.js",
-      "require": "./dist/node.js",
-      "default": "./dist/node.js"
+      "require": "./dist/node.cjs"
     },
     "./mdx/*": "./src/mdx/*"
   },

@@ -15,7 +15,7 @@ export default defineConfig({
       {
         test: {
           name: 'node',
-          include: ['__tests__/index.test.ts'],
+          include: ['__tests__/index.test.ts', '__tests__/cors.test.ts'],
           environment: 'node',
         },
       },

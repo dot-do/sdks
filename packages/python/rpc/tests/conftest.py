@@ -1,8 +1,11 @@
 """
-Pytest configuration and fixtures for rpc-do conformance tests.
+Pytest configuration and fixtures for rpc-do tests.
 
-This module provides fixtures for connecting to the test server and
-loading conformance test specifications.
+This module provides fixtures for:
+- Connecting to the test server
+- Loading conformance test specifications
+- Mocking RPC clients for unit tests
+- Reusable test utilities
 
 To run conformance tests, you need the test server running:
     cd /path/to/dot-do-capnweb
@@ -15,10 +18,12 @@ Then run tests:
 
 import os
 import socket
+import asyncio
 import pytest
 import yaml
 from pathlib import Path
 from typing import Any, AsyncGenerator
+from unittest.mock import AsyncMock, MagicMock
 
 
 def is_server_available(host: str = "localhost", port: int = 8787) -> bool:
@@ -30,7 +35,59 @@ def is_server_available(host: str = "localhost", port: int = 8787) -> bool:
         return False
 
 
-# Fixtures
+# ============================================================================
+# Unit Test Fixtures
+# ============================================================================
+
+@pytest.fixture
+def mock_websocket():
+    """Create a mock WebSocket connection."""
+    ws = MagicMock()
+    ws.send = AsyncMock()
+    ws.recv = AsyncMock(return_value='["resolve", 1, 42]')
+    ws.close = AsyncMock()
+    return ws
+
+
+@pytest.fixture
+def mock_rpc_client():
+    """Create a mock RpcClient for unit testing."""
+    from rpc_do import RpcClient
+
+    client = RpcClient("ws://localhost:8787")
+    return client
+
+
+@pytest.fixture
+def mock_connected_client(mock_websocket):
+    """Create an RpcClient with mocked WebSocket."""
+    from rpc_do import RpcClient
+
+    client = RpcClient("ws://localhost:8787")
+    client._ws = mock_websocket
+    client._closed = False
+    return client
+
+
+@pytest.fixture
+def rpc_promise():
+    """Create an RpcPromise for testing."""
+    from rpc_do.promise import RpcPromise
+
+    return RpcPromise(None, "testMethod", (), {})
+
+
+@pytest.fixture
+def mock_client_with_execute():
+    """Create a mock client with _execute_call method."""
+    client = MagicMock()
+    client._execute_call = AsyncMock(return_value={"status": "ok"})
+    return client
+
+
+# ============================================================================
+# Integration Test Fixtures
+# ============================================================================
 
 @pytest.fixture(scope="session")
 def server_url() -> str:

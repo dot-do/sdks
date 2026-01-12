@@ -294,6 +294,81 @@ const names = await userIds.map(id => api.getUserName(id));  // Still RT 1!
 5. **Progressive Disclosure**: Simple things simple, complex things possible
 6. **API Compatibility**: Domain packages match native driver APIs exactly
 
+## Error Hierarchy
+
+All error types in the DotDo ecosystem follow a single inheritance chain to ensure consistent `instanceof` checks across all packages.
+
+### Single Source of Truth
+
+Errors are defined **only** in `@dotdo/capnweb` and re-exported through the package chain:
+
+```
+@dotdo/capnweb  (defines)
+      ↓
+   rpc.do       (re-exports from @dotdo/capnweb)
+      ↓
+   dotdo        (re-exports from rpc.do)
+      ↓
+@dotdo/oauth    (extends CapnwebError with OAuthError)
+```
+
+This ensures that:
+- `instanceof` checks work correctly regardless of which package the error was imported from
+- There are no duplicate class definitions that would break error catching
+- All errors share a common base class (`CapnwebError`)
+
+### Error Class Hierarchy
+
+```typescript
+CapnwebError (base)
+├── ConnectionError     // Connection failures, disconnections
+├── RpcError           // Method call failures, server errors
+├── CapabilityError    // Capability resolution failures
+├── TimeoutError       // Request timeout exceeded
+└── OAuthError         // OAuth-specific errors (defined in oauth.do)
+```
+
+### Usage Examples
+
+```typescript
+// Import from any package - they're all the same class
+import { RpcError } from 'rpc.do';
+import { RpcError as RpcErrorFromDotdo } from 'dotdo';
+import { CapnwebError } from '@dotdo/capnweb';
+
+// All of these work correctly:
+try {
+  await client.call('someMethod');
+} catch (error) {
+  // Catch specific error types
+  if (error instanceof RpcError) {
+    console.log('RPC call failed:', error.message);
+  }
+
+  // Or catch all RPC-related errors
+  if (error instanceof CapnwebError) {
+    console.log(`Error [${error.code}]: ${error.message}`);
+  }
+}
+```
+
+### Error Properties
+
+| Error Class | Properties | When Thrown |
+|-------------|------------|-------------|
+| `CapnwebError` | `message`, `code` | Base class, not thrown directly |
+| `ConnectionError` | `message`, `code` | Network failures, server unreachable |
+| `RpcError` | `message`, `code`, `methodId?` | Method not found, invalid args, server exceptions |
+| `CapabilityError` | `message`, `code`, `capabilityId?` | Capability expired, revoked, or not found |
+| `TimeoutError` | `message`, `code` | Request exceeded configured timeout |
+
+### Guidelines for Package Authors
+
+1. **Never define new error classes that duplicate capnweb errors**
+2. **Always re-export from the upstream package** (rpc.do re-exports from @dotdo/capnweb)
+3. **New error types should extend CapnwebError** (e.g., OAuthError in oauth.do)
+4. **Use the `code` property for machine-readable error identification**
+
 ---
 
 ## Dependency Chain: oauth.do -> rpc.do -> Domain SDKs

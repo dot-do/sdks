@@ -6,11 +6,11 @@ Example usage:
 
     # Using API key authentication
     async with DotDo(api_key="your-api-key") as do:
-        result = await do.$.users.get(id=123)
+        result = await do.rpc.users.get(id=123)
 
     # Using environment variables (DOTDO_API_KEY)
     async with DotDo() as do:
-        result = await do.$.users.list()
+        result = await do.rpc.users.list()
 
     # With custom configuration
     do = DotDo(
@@ -137,7 +137,7 @@ class DotDo:
     Example:
         # Basic usage with API key
         async with DotDo(api_key="your-key") as do:
-            users = await do.$.users.list()
+            users = await do.rpc.users.list()
 
         # With custom configuration
         config = DotDoConfig(
@@ -146,7 +146,7 @@ class DotDo:
             retry=RetryConfig(max_retries=5),
         )
         async with DotDo(config=config) as do:
-            result = await do.$.service.method()
+            result = await do.rpc.service.method()
 
     Authentication:
         The client supports multiple authentication methods:
@@ -211,7 +211,7 @@ class DotDo:
         return self._authenticated
 
     @property
-    def $(self) -> RpcProxy:
+    def rpc(self) -> RpcProxy:
         """
         Magic proxy for zero-schema RPC access.
 
@@ -219,11 +219,11 @@ class DotDo:
         translating them into authenticated RPC requests with automatic retry.
 
         Example:
-            result = await do.$.users.get(id=123)
+            result = await do.rpc.users.get(id=123)
         """
         if self._client is None:
             raise RuntimeError("DotDo client not connected. Use 'async with DotDo() as do:'")
-        return self._client.$
+        return self._client.rpc
 
     async def connect(self) -> None:
         """

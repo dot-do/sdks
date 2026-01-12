@@ -1,15 +1,15 @@
 """
-DotDo RPC Client - Zero-schema RPC with magic $ proxy.
+DotDo RPC Client - Zero-schema RPC with magic rpc proxy.
 
 Example usage:
     from dotdo_rpc import RpcClient
 
     async with RpcClient("wss://api.dotdo.dev/rpc") as client:
-        # Magic $ proxy provides zero-schema access
-        result = await client.$.users.get(id=123)
+        # Magic rpc proxy provides zero-schema access
+        result = await client.rpc.users.get(id=123)
 
         # Chain calls with promise pipelining
-        user = client.$.users.get(id=123)
+        user = client.rpc.users.get(id=123)
         posts = await user.posts.list(limit=10)
 """
 
@@ -29,9 +29,9 @@ __version__ = "0.1.0"
 
 class RpcClient:
     """
-    RPC Client with magic $ proxy for zero-schema access.
+    RPC Client with magic rpc proxy for zero-schema access.
 
-    The $ property returns an RpcProxy that allows calling remote methods
+    The rpc property returns an RpcProxy that allows calling remote methods
     without any schema definition. Method names and arguments are dynamically
     resolved at runtime.
 
@@ -39,12 +39,12 @@ class RpcClient:
         client = RpcClient("wss://api.dotdo.dev/rpc")
         await client.connect()
 
-        # Zero-schema access via $
-        result = await client.$.service.method(arg1="value")
+        # Zero-schema access via rpc
+        result = await client.rpc.service.method(arg1="value")
 
         # Promise pipelining - call methods on unresolved results
-        user = client.$.users.get(id=123)  # Not awaited yet
-        posts = await user.posts.list()     # Pipelined call
+        user = client.rpc.users.get(id=123)  # Not awaited yet
+        posts = await user.posts.list()       # Pipelined call
     """
 
     def __init__(self, url: str, *, timeout: float = 30.0) -> None:
@@ -71,7 +71,7 @@ class RpcClient:
         return self._connected
 
     @property
-    def $(self) -> RpcProxy:
+    def rpc(self) -> RpcProxy:
         """
         Magic proxy for zero-schema RPC access.
 
@@ -80,7 +80,7 @@ class RpcClient:
 
         Example:
             # These are equivalent:
-            await client.$.users.get(id=123)
+            await client.rpc.users.get(id=123)
             await client.call("users.get", id=123)
         """
         if self._proxy is None:

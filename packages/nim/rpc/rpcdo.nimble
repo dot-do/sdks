@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.1.0"
+version = "0.1.0"
 author        = "DotDo Team"
 description   = "DotDo RPC client for Nim - type-safe RPC with remap support"
 license       = "MIT"

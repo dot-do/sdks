@@ -283,9 +283,35 @@ export class MessageBuilder {
 // ============================================================================
 
 /**
- * Base error class for capnweb errors
+ * Base error class for all capnweb/RPC errors.
+ *
+ * All error types in the DotDo ecosystem extend this class, allowing you to
+ * catch all RPC-related errors with a single catch block.
+ *
+ * Error Hierarchy:
+ * - CapnwebError (base)
+ *   - ConnectionError: Connection failures, disconnections
+ *   - RpcError: Method call failures, server errors
+ *   - CapabilityError: Capability resolution failures
+ *   - TimeoutError: Request timeout exceeded
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   await client.call('someMethod');
+ * } catch (error) {
+ *   if (error instanceof CapnwebError) {
+ *     console.log(`RPC error [${error.code}]: ${error.message}`);
+ *   }
+ * }
+ * ```
  */
 export class CapnwebError extends Error {
+  /**
+   * Creates a new CapnwebError.
+   * @param message - Human-readable error message
+   * @param code - Machine-readable error code (e.g., 'CONNECTION_ERROR', 'RPC_ERROR')
+   */
   constructor(message: string, public readonly code: string) {
     super(message);
     this.name = 'CapnwebError';
@@ -293,9 +319,31 @@ export class CapnwebError extends Error {
 }
 
 /**
- * Connection-related errors
+ * Error thrown when a connection cannot be established or is unexpectedly lost.
+ *
+ * Common causes:
+ * - Network unreachable or server down
+ * - TLS/certificate errors
+ * - Connection timeout during handshake
+ * - Server closed connection unexpectedly
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   await connect('wss://api.example.do');
+ * } catch (error) {
+ *   if (error instanceof ConnectionError) {
+ *     console.log('Failed to connect:', error.message);
+ *     // Retry logic here
+ *   }
+ * }
+ * ```
  */
 export class ConnectionError extends CapnwebError {
+  /**
+   * Creates a new ConnectionError.
+   * @param message - Description of the connection failure
+   */
   constructor(message: string) {
     super(message, 'CONNECTION_ERROR');
     this.name = 'ConnectionError';
@@ -303,9 +351,34 @@ export class ConnectionError extends CapnwebError {
 }
 
 /**
- * RPC call errors
+ * Error thrown when an RPC method call fails.
+ *
+ * Common causes:
+ * - Method not found on the remote server
+ * - Invalid arguments passed to the method
+ * - Server-side exception during method execution
+ * - Permission denied for the requested operation
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   await client.call('processData', data);
+ * } catch (error) {
+ *   if (error instanceof RpcError) {
+ *     console.log(`RPC call failed: ${error.message}`);
+ *     if (error.methodId !== undefined) {
+ *       console.log(`Method ID: ${error.methodId}`);
+ *     }
+ *   }
+ * }
+ * ```
  */
 export class RpcError extends CapnwebError {
+  /**
+   * Creates a new RpcError.
+   * @param message - Description of the RPC failure
+   * @param methodId - Optional method ID that failed (for debugging)
+   */
   constructor(message: string, public readonly methodId?: number) {
     super(message, 'RPC_ERROR');
     this.name = 'RpcError';
@@ -313,11 +386,69 @@ export class RpcError extends CapnwebError {
 }
 
 /**
- * Capability resolution errors
+ * Error thrown when a capability cannot be resolved or is invalid.
+ *
+ * Common causes:
+ * - Capability reference expired or was garbage collected
+ * - Capability was revoked by the server
+ * - Invalid capability ID provided
+ * - Capability not found in the import table
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   const counter = await client.call('getCounter');
+ *   await counter.increment(1);
+ * } catch (error) {
+ *   if (error instanceof CapabilityError) {
+ *     console.log(`Capability error: ${error.message}`);
+ *     if (error.capabilityId !== undefined) {
+ *       console.log(`Capability ID: ${error.capabilityId}`);
+ *     }
+ *   }
+ * }
+ * ```
  */
 export class CapabilityError extends CapnwebError {
+  /**
+   * Creates a new CapabilityError.
+   * @param message - Description of the capability error
+   * @param capabilityId - Optional ID of the capability that caused the error
+   */
   constructor(message: string, public readonly capabilityId?: CapabilityId) {
     super(message, 'CAPABILITY_ERROR');
     this.name = 'CapabilityError';
+  }
+}
+
+/**
+ * Error thrown when an operation exceeds its timeout.
+ *
+ * Common causes:
+ * - Server is slow or overloaded
+ * - Network latency issues
+ * - Method taking longer than expected to complete
+ * - Deadlock or infinite loop on the server
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   await client.call('longRunningOperation', { timeout: 5000 });
+ * } catch (error) {
+ *   if (error instanceof TimeoutError) {
+ *     console.log('Operation timed out:', error.message);
+ *     // Consider retrying with a longer timeout
+ *   }
+ * }
+ * ```
+ */
+export class TimeoutError extends CapnwebError {
+  /**
+   * Creates a new TimeoutError.
+   * @param message - Description of what timed out (default: 'Request timed out')
+   */
+  constructor(message: string = 'Request timed out') {
+    super(message, 'TIMEOUT_ERROR');
+    this.name = 'TimeoutError';
   }
 }

@@ -22,7 +22,9 @@ static GLOBAL_CONFIG: LazyLock<RwLock<OAuthConfig>> =
 /// });
 /// ```
 pub fn configure(config: OAuthConfig) {
-    let mut global = GLOBAL_CONFIG.write().unwrap();
+    let mut global = GLOBAL_CONFIG
+        .write()
+        .expect("Global config lock poisoned - unrecoverable");
     *global = config;
 }
 
@@ -30,7 +32,10 @@ pub fn configure(config: OAuthConfig) {
 ///
 /// Returns a clone of the current global configuration.
 pub fn get_config() -> OAuthConfig {
-    GLOBAL_CONFIG.read().unwrap().clone()
+    GLOBAL_CONFIG
+        .read()
+        .expect("Global config lock poisoned - unrecoverable")
+        .clone()
 }
 
 /// Update specific configuration values
@@ -40,7 +45,9 @@ pub fn update_config<F>(updater: F)
 where
     F: FnOnce(&mut OAuthConfig),
 {
-    let mut global = GLOBAL_CONFIG.write().unwrap();
+    let mut global = GLOBAL_CONFIG
+        .write()
+        .expect("Global config lock poisoned - unrecoverable");
     updater(&mut global);
 }
 

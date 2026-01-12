@@ -4,6 +4,71 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use thiserror::Error;
+
+/// OAuth error types for the library
+#[derive(Error, Debug)]
+pub enum OAuthError {
+    /// Configuration lock is poisoned (unrecoverable)
+    #[error("Configuration lock poisoned - unrecoverable")]
+    ConfigLockPoisoned,
+
+    /// Storage lock is poisoned (unrecoverable)
+    #[error("Storage lock poisoned - unrecoverable")]
+    StorageLockPoisoned,
+
+    /// Network request failed
+    #[error("Network request failed: {0}")]
+    NetworkError(#[from] reqwest::Error),
+
+    /// JSON serialization/deserialization failed
+    #[error("JSON error: {0}")]
+    JsonError(#[from] serde_json::Error),
+
+    /// IO error
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+
+    /// Client ID is required
+    #[error("Client ID is required. Set OAUTH_CLIENT_ID or configure with client_id")]
+    MissingClientId,
+
+    /// Authentication failed
+    #[error("Authentication failed: {status}")]
+    AuthenticationFailed { status: String },
+
+    /// Token refresh failed
+    #[error("Token refresh failed: {status} - {details}")]
+    TokenRefreshFailed { status: String, details: String },
+
+    /// Device authorization failed
+    #[error("Device authorization failed: {status} - {details}")]
+    DeviceAuthorizationFailed { status: String, details: String },
+
+    /// Device code expired
+    #[error("Device authorization expired. Please try again.")]
+    DeviceCodeExpired,
+
+    /// Access denied by user
+    #[error("Access denied by user")]
+    AccessDenied,
+
+    /// Token polling failed
+    #[error("Token polling failed: {0}")]
+    TokenPollingFailed(String),
+
+    /// Keyring error
+    #[error("Keyring error: {0}")]
+    KeyringError(String),
+
+    /// Home directory not found
+    #[error("Could not determine home directory")]
+    HomeDirNotFound,
+
+    /// Token data parsing failed
+    #[error("Failed to parse token data: {0}")]
+    TokenParseError(String),
+}
 
 /// OAuth configuration options
 #[derive(Debug, Clone)]

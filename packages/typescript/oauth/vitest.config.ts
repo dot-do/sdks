@@ -4,7 +4,7 @@ import { resolve } from 'path'
 export default defineConfig({
 	test: {
 		globals: true,
-		environment: 'jsdom',
+		environment: 'node',
 		include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
 		setupFiles: [resolve(__dirname, 'tests/setup.ts')],
 		coverage: {

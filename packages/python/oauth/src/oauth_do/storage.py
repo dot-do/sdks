@@ -8,13 +8,132 @@ and file fallback for environments where keyring is not available.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel, Field, ValidationError, field_validator
+
+from .types import StorageError
+
 if TYPE_CHECKING:
     from .types import StoredTokenData
+
+logger = logging.getLogger(__name__)
+
+
+class TokenDataValidationError(StorageError):
+    """Exception raised when token data JSON validation fails.
+
+    This exception is raised when token JSON is malformed, missing
+    required fields, or contains invalid field types.
+
+    Attributes:
+        message: Human-readable error description
+        cause: The underlying exception that caused this error
+    """
+
+    def __init__(self, message: str, cause: Exception | None = None):
+        super().__init__(message, cause)
+
+
+class TokenDataModel(BaseModel):
+    """Pydantic model for validating token data JSON.
+
+    Supports both camelCase (accessToken) and snake_case (access_token) field names
+    for compatibility with different token sources.
+
+    Extra fields are ignored for forward compatibility with future token formats.
+    """
+
+    access_token: str = Field(alias="accessToken")
+    token_type: str = Field(default="Bearer", alias="tokenType")
+    refresh_token: str | None = Field(default=None, alias="refreshToken")
+    expires_at: int | None = Field(default=None, alias="expiresAt")
+
+    model_config = {
+        "populate_by_name": True,  # Allow both accessToken and access_token
+        "extra": "ignore",  # Ignore extra fields for forward compatibility
+    }
+
+    @field_validator("access_token", mode="before")
+    @classmethod
+    def validate_access_token_not_empty(cls, v: str | None) -> str:
+        """Validate that access_token is not empty or whitespace-only."""
+        if v is None:
+            raise ValueError("access_token is required and cannot be null")
+        if not isinstance(v, str):
+            raise ValueError("access_token must be a string")
+        if not v.strip():
+            raise ValueError("access_token cannot be empty or whitespace-only")
+        return v
+
+
+def parse_token_data(data: str) -> "StoredTokenData":
+    """Parse and validate token data JSON string.
+
+    This function validates JSON token data against a schema, ensuring:
+    - Valid JSON format
+    - Required fields are present (accessToken/access_token)
+    - Field types are correct
+    - access_token is non-empty
+
+    Extra fields are ignored for forward compatibility.
+
+    Args:
+        data: JSON string containing token data
+
+    Returns:
+        StoredTokenData instance with validated fields
+
+    Raises:
+        TokenDataValidationError: If JSON is malformed, missing required fields,
+                                  or contains invalid field types
+
+    Example:
+        >>> token = parse_token_data('{"accessToken": "abc123"}')
+        >>> token.access_token
+        'abc123'
+    """
+    from .types import StoredTokenData
+
+    if not data or not data.strip():
+        raise TokenDataValidationError("Invalid token format: empty or whitespace-only JSON")
+
+    try:
+        # First try to parse as JSON to give better error messages
+        parsed = json.loads(data)
+    except json.JSONDecodeError as e:
+        raise TokenDataValidationError(f"Invalid JSON format: {e}") from e
+
+    # Ensure it's a dict/object
+    if not isinstance(parsed, dict):
+        raise TokenDataValidationError(
+            f"Invalid token format: expected JSON object, got {type(parsed).__name__}"
+        )
+
+    try:
+        validated = TokenDataModel.model_validate(parsed)
+    except ValidationError as e:
+        # Extract the first error message for a cleaner error
+        errors = e.errors()
+        if errors:
+            first_error = errors[0]
+            field = ".".join(str(loc) for loc in first_error.get("loc", []))
+            msg = first_error.get("msg", "validation error")
+            raise TokenDataValidationError(
+                f"Invalid token format: {field} - {msg}"
+            ) from e
+        raise TokenDataValidationError(f"Invalid token format: {e}") from e
+
+    return StoredTokenData(
+        access_token=validated.access_token,
+        refresh_token=validated.refresh_token,
+        expires_at=validated.expires_at,
+    )
+
 
 # Keychain service and account identifiers
 KEYCHAIN_SERVICE = "oauth.do"
@@ -101,8 +220,9 @@ class KeyringStorage(TokenStorage):
             self._available = True
             return True
         except Exception as e:
-            if _is_debug():
-                print(f"Keyring not available: {e}")
+            # This is expected during availability check - keyring may not be
+            # configured or accessible in this environment
+            logger.debug("Keyring not available: %s", e)
             self._available = False
             return False
 
@@ -121,20 +241,30 @@ class KeyringStorage(TokenStorage):
                 token_data = json.loads(data)
                 return token_data.get("accessToken") or token_data.get("access_token")
             return data.strip()
-        except Exception as e:
-            if _is_debug():
-                print(f"Failed to get token from keyring: {e}")
+        except KeyError:
+            # Credential doesn't exist yet, this is expected
             return None
+        except PermissionError as e:
+            raise StorageError(
+                f"Permission denied accessing keyring token storage: {e}", cause=e
+            ) from e
+        except Exception as e:
+            logger.warning("Unexpected error reading token from keyring: %s", e)
+            raise StorageError(f"Failed to read token from keyring: {e}", cause=e) from e
 
     async def set_token(self, token: str) -> None:
         """Store token in keyring."""
         if not KEYRING_AVAILABLE or keyring is None:
-            raise RuntimeError("Keyring storage not available")
+            raise StorageError("Keyring storage not available")
 
         try:
             keyring.set_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, token.strip())
+        except PermissionError as e:
+            raise StorageError(
+                f"Permission denied saving token to keyring: {e}", cause=e
+            ) from e
         except Exception as e:
-            raise RuntimeError(f"Failed to save token to keyring: {e}") from e
+            raise StorageError(f"Failed to save token to keyring: {e}", cause=e) from e
 
     async def remove_token(self) -> None:
         """Remove token from keyring."""
@@ -143,9 +273,19 @@ class KeyringStorage(TokenStorage):
 
         try:
             keyring.delete_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
-        except Exception:
-            # Ignore errors if credential doesn't exist
+        except KeyError:
+            # Credential doesn't exist, this is expected
             pass
+        except Exception as e:
+            # Check if this is a "not found" type error from keyring backends
+            # Different backends raise different exceptions for missing credentials
+            error_msg = str(e).lower()
+            if "not found" in error_msg or "no password" in error_msg:
+                # Credential doesn't exist, this is expected
+                pass
+            else:
+                logger.warning("Error removing token from keyring: %s", e)
+                # Don't raise on remove - it's a best-effort operation
 
     async def get_token_data(self) -> "StoredTokenData | None":
         """Get full token data from keyring."""
@@ -169,13 +309,26 @@ class KeyringStorage(TokenStorage):
                 )
             # Legacy plain text format
             return StoredTokenData(access_token=data.strip())
-        except Exception:
+        except KeyError:
+            # Credential doesn't exist yet, this is expected
             return None
+        except PermissionError as e:
+            raise StorageError(
+                f"Permission denied accessing keyring token storage: {e}", cause=e
+            ) from e
+        except json.JSONDecodeError as e:
+            logger.warning("Invalid JSON in keyring token data: %s", e)
+            return None
+        except Exception as e:
+            logger.warning("Unexpected error reading token data from keyring: %s", e)
+            raise StorageError(
+                f"Failed to read token data from keyring: {e}", cause=e
+            ) from e
 
     async def set_token_data(self, data: "StoredTokenData") -> None:
         """Store full token data in keyring."""
         if not KEYRING_AVAILABLE or keyring is None:
-            raise RuntimeError("Keyring storage not available")
+            raise StorageError("Keyring storage not available")
 
         try:
             json_data = json.dumps({
@@ -184,8 +337,12 @@ class KeyringStorage(TokenStorage):
                 "expiresAt": data.expires_at,
             })
             keyring.set_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, json_data)
+        except PermissionError as e:
+            raise StorageError(
+                f"Permission denied saving token data to keyring: {e}", cause=e
+            ) from e
         except Exception as e:
-            raise RuntimeError(f"Failed to save token data to keyring: {e}") from e
+            raise StorageError(f"Failed to save token data to keyring: {e}", cause=e) from e
 
 
 class FileStorage(TokenStorage):
@@ -225,7 +382,12 @@ class FileStorage(TokenStorage):
                 self._config_dir = home / ".oauth.do"
                 self._token_path = self._config_dir / "token"
             return True
-        except Exception:
+        except RuntimeError as e:
+            # Path.home() can raise RuntimeError if home directory can't be determined
+            logger.warning("Could not determine home directory: %s", e)
+            return False
+        except Exception as e:
+            logger.warning("Error initializing storage paths: %s", e)
             return False
 
     async def get_token(self) -> str | None:
@@ -245,21 +407,34 @@ class FileStorage(TokenStorage):
 
             # Check file permissions
             mode = self._token_path.stat().st_mode & 0o777
-            if mode != 0o600 and _is_debug():
-                print(
-                    f"Warning: Token file has insecure permissions ({oct(mode)}). "
-                    f"Expected 0600. Run: chmod 600 {self._token_path}"
+            if mode != 0o600:
+                logger.debug(
+                    "Token file has insecure permissions (%s). "
+                    "Expected 0600. Run: chmod 600 %s",
+                    oct(mode),
+                    self._token_path,
                 )
 
             content = self._token_path.read_text().strip()
 
             # Check if it's JSON (new format) or plain token (legacy)
             if content.startswith("{"):
-                data = json.loads(content)
-                return data.get("accessToken") or data.get("access_token")
+                parsed = json.loads(content)
+                return parsed.get("accessToken") or parsed.get("access_token")
             return content
-        except Exception:
+        except FileNotFoundError:
+            # Credential doesn't exist yet, this is expected
             return None
+        except PermissionError as e:
+            raise StorageError(
+                f"Permission denied accessing token file {self._token_path}: {e}", cause=e
+            ) from e
+        except json.JSONDecodeError as e:
+            logger.warning("Invalid JSON in token file %s: %s", self._token_path, e)
+            return None
+        except OSError as e:
+            logger.warning("Unexpected error reading token file: %s", e)
+            raise StorageError(f"Failed to read token file: {e}", cause=e) from e
 
     async def set_token(self, token: str) -> None:
         """Store token in file."""
@@ -274,8 +449,16 @@ class FileStorage(TokenStorage):
         try:
             if self._token_path.exists():
                 self._token_path.unlink()
-        except Exception:
+        except FileNotFoundError:
+            # File was already removed, this is expected
             pass
+        except PermissionError as e:
+            raise StorageError(
+                f"Permission denied removing token file {self._token_path}: {e}", cause=e
+            ) from e
+        except OSError as e:
+            logger.warning("Error removing token file: %s", e)
+            # Don't raise on remove - it's a best-effort operation
 
     async def get_token_data(self) -> "StoredTokenData | None":
         """Get full token data from file."""
@@ -292,21 +475,32 @@ class FileStorage(TokenStorage):
 
             # Check if it's JSON format
             if content.startswith("{"):
-                data = json.loads(content)
+                parsed = json.loads(content)
                 return StoredTokenData(
-                    access_token=data.get("accessToken") or data.get("access_token", ""),
-                    refresh_token=data.get("refreshToken") or data.get("refresh_token"),
-                    expires_at=data.get("expiresAt") or data.get("expires_at"),
+                    access_token=parsed.get("accessToken") or parsed.get("access_token", ""),
+                    refresh_token=parsed.get("refreshToken") or parsed.get("refresh_token"),
+                    expires_at=parsed.get("expiresAt") or parsed.get("expires_at"),
                 )
             # Legacy plain text format
             return StoredTokenData(access_token=content)
-        except Exception:
+        except FileNotFoundError:
+            # Credential doesn't exist yet, this is expected
             return None
+        except PermissionError as e:
+            raise StorageError(
+                f"Permission denied accessing token file {self._token_path}: {e}", cause=e
+            ) from e
+        except json.JSONDecodeError as e:
+            logger.warning("Invalid JSON in token file %s: %s", self._token_path, e)
+            return None
+        except OSError as e:
+            logger.warning("Unexpected error reading token data from file: %s", e)
+            raise StorageError(f"Failed to read token data from file: {e}", cause=e) from e
 
     async def set_token_data(self, data: "StoredTokenData") -> None:
         """Store full token data in file."""
         if not self._init_paths() or self._token_path is None or self._config_dir is None:
-            raise RuntimeError("File storage not available")
+            raise StorageError("File storage not available - could not initialize paths")
 
         try:
             # Create directory with secure permissions
@@ -322,8 +516,12 @@ class FileStorage(TokenStorage):
             # Write with secure permissions
             self._token_path.write_text(json_data)
             self._token_path.chmod(0o600)
-        except Exception as e:
-            raise RuntimeError(f"Failed to save token data: {e}") from e
+        except PermissionError as e:
+            raise StorageError(
+                f"Permission denied writing token file {self._token_path}: {e}", cause=e
+            ) from e
+        except OSError as e:
+            raise StorageError(f"Failed to save token data: {e}", cause=e) from e
 
     async def get_storage_info(self) -> dict:
         """Get information about the storage backend."""

@@ -132,7 +132,7 @@ async fn login_command() -> Result<()> {
     // Calculate expiration time
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .expect("System time is before Unix epoch - clock misconfigured")
         .as_millis() as u64;
 
     let token_data = StoredTokenData {
@@ -211,21 +211,22 @@ async fn whoami_command() -> Result<()> {
 
     let auth_result = get_user(token.as_deref()).await?;
 
-    if auth_result.user.is_none() {
-        println!("{}", "Not authenticated".dimmed());
-        println!("\nRun {} to authenticate", "oauth-do login".cyan());
-        return Ok(());
+    match auth_result.user {
+        Some(user) => {
+            println!("{}", "Authenticated as:".bold());
+            if let Some(name) = &user.name {
+                println!("  {} {}", "Name:".green(), name);
+            }
+            if let Some(email) = &user.email {
+                println!("  {} {}", "Email:".green(), email);
+            }
+            println!("  {} {}", "ID:".green(), user.id);
+        }
+        None => {
+            println!("{}", "Not authenticated".dimmed());
+            println!("\nRun {} to authenticate", "oauth-do login".cyan());
+        }
     }
-
-    let user = auth_result.user.unwrap();
-    println!("{}", "Authenticated as:".bold());
-    if let Some(name) = &user.name {
-        println!("  {} {}", "Name:".green(), name);
-    }
-    if let Some(email) = &user.email {
-        println!("  {} {}", "Email:".green(), email);
-    }
-    println!("  {} {}", "ID:".green(), user.id);
 
     Ok(())
 }
@@ -233,16 +234,18 @@ async fn whoami_command() -> Result<()> {
 /// Token command - display current token
 async fn token_command() -> Result<()> {
     let storage = get_storage();
-    let token = storage.get_token()?;
 
-    if token.is_none() {
-        println!("{}", "No token found".dimmed());
-        println!("\nRun {} to authenticate", "oauth-do login".cyan());
-        return Ok(());
+    match storage.get_token()? {
+        Some(token) => {
+            // Just print the token (for piping to other commands)
+            println!("{}", token);
+        }
+        None => {
+            println!("{}", "No token found".dimmed());
+            println!("\nRun {} to authenticate", "oauth-do login".cyan());
+        }
     }
 
-    // Just print the token (for piping to other commands)
-    println!("{}", token.unwrap());
     Ok(())
 }
 

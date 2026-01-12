@@ -20,6 +20,50 @@ Cap'n Web is more expressive than almost every other RPC system, because it impl
 * Supports promise pipelining. When you start an RPC, you get back a promise. Instead of awaiting it, you can immediately use the promise in dependent RPCs, thus performing a chain of calls in a single network round trip.
 * Supports capability-based security patterns.
 
+## Language Maturity Matrix
+
+DotDo SDKs are available in multiple languages. This matrix shows the current maturity level of each implementation:
+
+| Language | capnweb | rpc.do | dotdo | oauth.do | Status | Notes |
+|----------|---------|--------|-------|----------|--------|-------|
+| TypeScript | ✅ | ✅ | ✅ | ✅ | **Stable** | Production-ready, full feature support |
+| Python | 🟡 | 🟡 | 🟡 | 🟡 | **Beta** | Core features working, edge cases incomplete |
+| Go | 🟡 | 🟡 | 🟡 | 🟡 | **Beta** | Protocol layer working |
+| Rust | 🟡 | 🟡 | 🟡 | 🟡 | **Beta** | Protocol layer working |
+| Ruby | 🔴 | 🔴 | 🔴 | 🔴 | **Alpha** | Scaffolded, expect major changes |
+| Java | 🔴 | 🔴 | 🔴 | 🔴 | **Alpha** | Scaffolded, expect major changes |
+| Kotlin | 🔴 | 🔴 | 🔴 | 🔴 | **Alpha** | Scaffolded, expect major changes |
+| Swift | 🔴 | 🔴 | 🔴 | 🔴 | **Alpha** | Scaffolded, expect major changes |
+| C#/.NET | 🔴 | 🔴 | 🔴 | 🔴 | **Alpha** | Scaffolded, expect major changes |
+| Elixir | 🔴 | 🔴 | 🔴 | 🔴 | **Alpha** | Scaffolded, expect major changes |
+| Scala | 🔴 | 🔴 | 🔴 | 🔴 | **Alpha** | Scaffolded, expect major changes |
+| PHP | ⚪ | ⚪ | ⚪ | ⚪ | **Planned** | Structure exists, implementation pending |
+| Dart | ⚪ | ⚪ | ⚪ | ⚪ | **Planned** | Structure exists, implementation pending |
+| Clojure | ⚪ | ⚪ | ⚪ | ⚪ | **Planned** | Structure exists, implementation pending |
+
+### Status Legend
+
+- ✅ **Stable** - Production-ready, full feature support
+- 🟡 **Beta** - Core features working, edge cases incomplete
+- 🔴 **Alpha** - Scaffolded, expect major changes
+- ⚪ **Planned** - Structure exists, implementation pending
+
+### Version Compatibility
+
+All packages are versioned together at **0.1.0**. This unified versioning ensures compatibility across all language implementations when used together.
+
+### Breaking Changes Policy
+
+During the **0.x** release cycle:
+- Breaking changes may occur in minor version bumps (0.1.0 → 0.2.0)
+- Patch releases (0.1.0 → 0.1.1) will maintain backward compatibility
+- All breaking changes will be documented in the [CHANGELOG](./CHANGELOG.md)
+- We recommend pinning to specific versions in production
+
+### Contributing to Language Support
+
+Want to help improve maturity for a specific language? See the language implementations in the `packages/` directory and check our [GitHub Issues](https://github.com/drivly/dot-do-capnweb/issues) for open tasks.
+
 ## Installation
 
 [Cap'n Web is available as an npm package.](https://www.npmjs.com/package/capnweb)

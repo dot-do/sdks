@@ -9,7 +9,8 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
     }
   },
   "files": [
@@ -17,9 +18,11 @@
     "src"
   ],
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "clean": "rm -rf dist"
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist",
+    "check:publish": "node -e \"const pkg = require('./package.json'); const deps = JSON.stringify(pkg.dependencies || {}); if (deps.includes('workspace:')) { console.error('ERROR: workspace: protocol found in dependencies. Replace with actual versions before publishing.'); process.exit(1); }\"",
+    "prepublishOnly": "pnpm check:publish && pnpm build"
   },
   "keywords": [
     "capnproto",
@@ -30,6 +33,7 @@
   "author": "DotDo",
   "license": "MIT",
   "devDependencies": {
+    "tsup": "^8.0.0",
     "typescript": "^5.3.0"
   }
 }

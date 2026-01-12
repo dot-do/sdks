@@ -131,28 +131,160 @@ export let newMessagePortRpcSession:<T extends RpcCompatible<T> = Empty>
     <any>newMessagePortRpcSessionImpl;
 
 /**
+ * Options for configuring CORS behavior in `newWorkersRpcResponse`.
+ *
+ * SECURITY CONSIDERATIONS:
+ * - By default, no CORS headers are set, meaning cross-origin requests will be blocked by browsers.
+ * - Setting `allowedOrigins: "*"` allows ANY website to make requests to your API. Only use this
+ *   if your API uses in-band authorization (credentials passed as RPC parameters), as ambient
+ *   credentials (cookies, HTTP auth) could be exploited via CSRF attacks.
+ * - When using `allowCredentials: true`, you cannot use `allowedOrigins: "*"` per CORS spec.
+ *   Instead, the specific requesting origin will be reflected back, which is equivalent to "*"
+ *   for CSRF purposes - use with extreme caution and only with in-band authorization.
+ * - For APIs that rely on cookies or session-based authentication, always use an explicit
+ *   allowlist of trusted origins.
+ */
+export interface WorkersRpcResponseOptions {
+  /**
+   * Specifies which origins are allowed to make cross-origin requests.
+   *
+   * - `undefined` (default): No CORS headers are set. Cross-origin requests will be blocked.
+   * - `"*"`: Allows requests from any origin. SECURITY WARNING: Only safe for APIs using
+   *   in-band authorization. Requires explicit opt-in as this permits any website to call your API.
+   * - `string[]`: An explicit allowlist of origins (e.g., `["https://trusted.com"]`).
+   *   Only these specific origins will receive CORS headers allowing cross-origin access.
+   */
+  allowedOrigins?: string[] | "*";
+
+  /**
+   * When true, sets `Access-Control-Allow-Credentials: true` header, allowing the request
+   * to include credentials (cookies, HTTP auth, client-side certificates).
+   *
+   * SECURITY WARNING: When this is true and `allowedOrigins` is `"*"`, the actual origin
+   * will be reflected back (since CORS spec disallows `*` with credentials). This is
+   * functionally equivalent to allowing any origin with credentials - use with extreme caution.
+   *
+   * @default false
+   */
+  allowCredentials?: boolean;
+}
+
+/**
+ * Helper function to compute CORS headers based on the request and options.
+ */
+function computeCorsHeaders(
+  request: Request,
+  options?: WorkersRpcResponseOptions
+): Headers {
+  const headers = new Headers();
+
+  // If no allowedOrigins specified, return empty headers (no CORS)
+  if (!options?.allowedOrigins) {
+    return headers;
+  }
+
+  const requestOrigin = request.headers.get("Origin");
+  const { allowedOrigins, allowCredentials } = options;
+
+  if (allowedOrigins === "*") {
+    // Wildcard mode
+    if (allowCredentials && requestOrigin) {
+      // CORS spec: cannot use "*" with credentials, must reflect specific origin
+      headers.set("Access-Control-Allow-Origin", requestOrigin);
+      headers.set("Access-Control-Allow-Credentials", "true");
+    } else {
+      // Standard wildcard
+      headers.set("Access-Control-Allow-Origin", "*");
+    }
+  } else if (Array.isArray(allowedOrigins) && requestOrigin) {
+    // Check if the request origin is in the allowlist
+    if (allowedOrigins.includes(requestOrigin)) {
+      headers.set("Access-Control-Allow-Origin", requestOrigin);
+      if (allowCredentials) {
+        headers.set("Access-Control-Allow-Credentials", "true");
+      }
+    }
+    // If origin not in list, don't set any CORS headers (request will be blocked)
+  }
+
+  return headers;
+}
+
+/**
+ * Applies CORS headers to a response based on the computed headers.
+ */
+function applyCorsHeaders(response: Response, corsHeaders: Headers): Response {
+  const origin = corsHeaders.get("Access-Control-Allow-Origin");
+  if (origin) {
+    response.headers.set("Access-Control-Allow-Origin", origin);
+  }
+
+  const credentials = corsHeaders.get("Access-Control-Allow-Credentials");
+  if (credentials) {
+    response.headers.set("Access-Control-Allow-Credentials", credentials);
+  }
+
+  return response;
+}
+
+/**
  * Implements unified handling of HTTP-batch and WebSocket responses for the Cloudflare Workers
  * Runtime.
  *
- * SECURITY WARNING: This function accepts cross-origin requests. If you do not want this, you
- * should validate the `Origin` header before calling this, or use `newHttpBatchRpcSession()` and
- * `newWebSocketRpcSession()` directly with appropriate security measures for each type of request.
- * But if your API uses in-band authorization (i.e. it has an RPC method that takes the user's
- * credentials as parameters and returns the authorized API), then cross-origin requests should
- * be safe.
+ * SECURITY NOTE: By default, this function does NOT set CORS headers, meaning cross-origin
+ * requests will be blocked by browsers. To allow cross-origin access, you must explicitly
+ * configure the `allowedOrigins` option.
+ *
+ * If your API uses in-band authorization (i.e., credentials are passed as RPC method parameters
+ * rather than via cookies/headers), you can safely use `allowedOrigins: "*"`. Otherwise, use
+ * an explicit allowlist of trusted origins.
+ *
+ * WebSocket connections always allow cross-origin by browser design, so ensure your RPC API
+ * authenticates users appropriately regardless of CORS settings.
+ *
+ * @param request - The incoming HTTP request
+ * @param localMain - The RPC target object to expose
+ * @param options - Optional CORS configuration
+ * @returns HTTP response with appropriate headers
+ *
+ * @example
+ * // Restrictive (default): No CORS, blocks cross-origin requests
+ * return newWorkersRpcResponse(request, api);
+ *
+ * @example
+ * // Allow specific origins (recommended for cookie-based auth)
+ * return newWorkersRpcResponse(request, api, {
+ *   allowedOrigins: ["https://myapp.com", "https://staging.myapp.com"]
+ * });
+ *
+ * @example
+ * // Allow any origin (only for APIs with in-band authorization)
+ * return newWorkersRpcResponse(request, api, {
+ *   allowedOrigins: "*"
+ * });
+ *
+ * @example
+ * // Allow credentials with specific origins
+ * return newWorkersRpcResponse(request, api, {
+ *   allowedOrigins: ["https://myapp.com"],
+ *   allowCredentials: true
+ * });
  */
-export async function newWorkersRpcResponse(request: Request, localMain: any) {
+export async function newWorkersRpcResponse(
+  request: Request,
+  localMain: any,
+  options?: WorkersRpcResponseOptions
+) {
+  // Compute CORS headers once based on request and options
+  const corsHeaders = computeCorsHeaders(request, options);
+
   if (request.method === "POST") {
     let response = await newHttpBatchRpcResponse(request, localMain);
-    // Since we're exposing the same API over WebSocket, too, and WebSocket always allows
-    // cross-origin requests, the API necessarily must be safe for cross-origin use (e.g. because
-    // it uses in-band authorization, as recommended in the readme). So, we might as well allow
-    // batch requests to be made cross-origin as well.
-    response.headers.set("Access-Control-Allow-Origin", "*");
-    return response;
+    return applyCorsHeaders(response, corsHeaders);
   } else if (request.headers.get("Upgrade")?.toLowerCase() === "websocket") {
     return newWorkersWebSocketRpcResponse(request, localMain);
   } else {
-    return new Response("This endpoint only accepts POST or WebSocket requests.", { status: 400 });
+    let response = new Response("This endpoint only accepts POST or WebSocket requests.", { status: 400 });
+    return applyCorsHeaders(response, corsHeaders);
   }
 }

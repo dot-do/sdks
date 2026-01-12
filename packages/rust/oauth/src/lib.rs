@@ -74,6 +74,6 @@ pub use storage::{
     create_secure_storage, FileStorage, KeyringStorage, MemoryStorage, SecureStorage, TokenStorage,
 };
 pub use types::{
-    AuthResult, DeviceAuthorizationResponse, OAuthConfig, OAuthProvider, StoredTokenData,
+    AuthResult, DeviceAuthorizationResponse, OAuthConfig, OAuthError, OAuthProvider, StoredTokenData,
     TokenError, TokenResponse, User,
 };

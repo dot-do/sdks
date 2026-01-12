@@ -27,14 +27,15 @@
  */
 
 // Core client
-export { RpcClient, ConnectOptions, CapabilityRef, isCapabilityRef, PipelineStep, createRpcPromise } from './client.js';
+export { RpcClient, isCapabilityRef, createRpcPromise } from './client.js';
+export type { ConnectOptions, CapabilityRef, PipelineStep } from './client.js';
 
 // Promise with pipelining
-export { RpcPromise, PipelineBuilder, PipelineOp } from './promise.js';
+export { RpcPromise, PipelineBuilder } from './promise.js';
+export type { PipelineOp } from './promise.js';
 
 // Proxy access
 export {
-  CapabilityProxy,
   createProxy,
   createCapabilityProxy,
   isCapabilityProxy,
@@ -45,20 +46,23 @@ export {
   CLIENT_REF,
   PATH_REF,
 } from './proxy.js';
+export type { CapabilityProxy } from './proxy.js';
 
 // Map operations
 export {
-  RecordedCall,
-  Recording,
-  MapSpec,
-  MapResult,
-  MapOptions,
   RpcRecorder,
   RpcReplayer,
   serverMap,
   createServerMap,
   serializeFunction,
   deserializeFunction,
+} from './map.js';
+export type {
+  RecordedCall,
+  Recording,
+  MapSpec,
+  MapResult,
+  MapOptions,
 } from './map.js';
 
 // Import for the connect function
@@ -123,37 +127,27 @@ export type ServiceInterface<T> = {
     : T[K];
 };
 
+// ============================================================================
+// Error Types - Re-exported from @dotdo/capnweb (single source of truth)
+// ============================================================================
+
 /**
- * Error types
+ * Error types are re-exported from @dotdo/capnweb to ensure a single source
+ * of truth and consistent instanceof checks across all packages.
+ *
+ * Error Hierarchy:
+ * - CapnwebError (base) - defined in @dotdo/capnweb
+ *   - ConnectionError - Connection failures
+ *   - RpcError - Method call failures
+ *   - CapabilityError - Capability resolution failures
+ *   - TimeoutError - Request timeout
+ *
+ * @see {@link CapnwebError} for catching all RPC-related errors
  */
-export class RpcError extends Error {
-  constructor(
-    message: string,
-    public readonly code: string,
-    public readonly data?: unknown
-  ) {
-    super(message);
-    this.name = 'RpcError';
-  }
-}
-
-export class ConnectionError extends RpcError {
-  constructor(message: string, data?: unknown) {
-    super(message, 'CONNECTION_ERROR', data);
-    this.name = 'ConnectionError';
-  }
-}
-
-export class CapabilityError extends RpcError {
-  constructor(message: string, public readonly capabilityId?: number) {
-    super(message, 'CAPABILITY_ERROR', { capabilityId });
-    this.name = 'CapabilityError';
-  }
-}
-
-export class TimeoutError extends RpcError {
-  constructor(message: string = 'Request timed out') {
-    super(message, 'TIMEOUT_ERROR');
-    this.name = 'TimeoutError';
-  }
-}
+export {
+  CapnwebError,
+  ConnectionError,
+  RpcError,
+  CapabilityError,
+  TimeoutError,
+} from '@dotdo/capnweb';

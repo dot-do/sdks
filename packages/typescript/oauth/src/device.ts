@@ -62,6 +62,10 @@ export async function authorizeDevice(options: DeviceAuthOptions = {}): Promise<
 /**
  * Poll for tokens after device authorization
  *
+ * This function implements the polling loop for OAuth 2.0 Device Authorization Grant (RFC 8628).
+ * It includes careful timing logic to avoid race conditions where the timeout could be exceeded
+ * due to the sleep interval.
+ *
  * @param deviceCode - Device code from authorization response
  * @param interval - Polling interval in seconds (default: 5)
  * @param expiresIn - Expiration time in seconds (default: 600)
@@ -83,13 +87,28 @@ export async function pollForTokens(
 	let currentInterval = interval * 1000
 
 	while (true) {
-		// Check if expired
-		if (Date.now() - startTime > timeout) {
+		// Calculate elapsed time and remaining time before timeout
+		const elapsed = Date.now() - startTime
+		const timeRemaining = timeout - elapsed
+
+		// Check if we've already exceeded the timeout
+		if (timeRemaining <= 0) {
 			throw new Error('Device authorization expired. Please try again.')
 		}
 
-		// Wait for interval
-		await new Promise((resolve) => setTimeout(resolve, currentInterval))
+		// RACE CONDITION FIX: Don't sleep longer than the remaining time.
+		// Without this, we could sleep for a full interval even when there's
+		// less time remaining, causing the actual timeout to exceed the specified limit.
+		// Example: If timeout=100ms, interval=50ms, and we're at 80ms elapsed,
+		// we should only sleep for 20ms, not 50ms.
+		const sleepTime = Math.min(currentInterval, timeRemaining)
+		await new Promise((resolve) => setTimeout(resolve, sleepTime))
+
+		// Check timeout again after sleep to handle edge cases where the sleep
+		// completed right at or just past the timeout boundary
+		if (Date.now() - startTime > timeout) {
+			throw new Error('Device authorization expired. Please try again.')
+		}
 
 		try {
 			const response = await config.fetch('https://auth.apis.do/user_management/authenticate', {

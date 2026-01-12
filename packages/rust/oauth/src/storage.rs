@@ -298,12 +298,18 @@ impl Default for MemoryStorage {
 
 impl TokenStorage for MemoryStorage {
     fn get_token(&self) -> Result<Option<String>> {
-        let guard = self.data.read().unwrap();
+        let guard = self
+            .data
+            .read()
+            .expect("Memory storage lock poisoned - unrecoverable");
         Ok(guard.as_ref().map(|d| d.access_token.clone()))
     }
 
     fn set_token(&self, token: &str) -> Result<()> {
-        let mut guard = self.data.write().unwrap();
+        let mut guard = self
+            .data
+            .write()
+            .expect("Memory storage lock poisoned - unrecoverable");
         *guard = Some(StoredTokenData {
             access_token: token.to_string(),
             refresh_token: None,
@@ -313,18 +319,27 @@ impl TokenStorage for MemoryStorage {
     }
 
     fn remove_token(&self) -> Result<()> {
-        let mut guard = self.data.write().unwrap();
+        let mut guard = self
+            .data
+            .write()
+            .expect("Memory storage lock poisoned - unrecoverable");
         *guard = None;
         Ok(())
     }
 
     fn get_token_data(&self) -> Result<Option<StoredTokenData>> {
-        let guard = self.data.read().unwrap();
+        let guard = self
+            .data
+            .read()
+            .expect("Memory storage lock poisoned - unrecoverable");
         Ok(guard.clone())
     }
 
     fn set_token_data(&self, data: &StoredTokenData) -> Result<()> {
-        let mut guard = self.data.write().unwrap();
+        let mut guard = self
+            .data
+            .write()
+            .expect("Memory storage lock poisoned - unrecoverable");
         *guard = Some(data.clone());
         Ok(())
     }

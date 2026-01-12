@@ -4,16 +4,58 @@
  */
 
 import {
-  connect,
-  createConnection,
-  type RpcProxy,
-  type $,
-  type RpcConnectionOptions,
-  type Connection,
-  type Recording,
-  type MapOptions,
-  type RecordedCall,
-} from '@dotdo/rpc';
+  connect as rpcConnect,
+  RpcClient,
+  TimeoutError,
+  type ConnectOptions,
+} from 'rpc.do';
+
+// Type aliases for compatibility - these represent the actual RPC types
+export type RpcProxy<T = unknown> = RpcClient<T>;
+export type $ = unknown;
+export type RpcConnectionOptions = ConnectOptions & {
+  url?: string;
+  headers?: Record<string, string>;
+  apiKey?: string;
+  timeout?: number;
+  signal?: AbortSignal;
+};
+
+// Connection interface for pooled connections
+export interface Connection {
+  close(reason?: string): Promise<void>;
+}
+
+// Map operation types
+export interface Recording {
+  calls: RecordedCall[];
+}
+
+export interface MapOptions {
+  captures?: Record<string, unknown>;
+}
+
+export interface RecordedCall {
+  method: string;
+  args: unknown[];
+  result?: unknown;
+}
+
+// Helper to create a connection (returns client and a close handle)
+function createConnection(options: RpcConnectionOptions): { connection: Connection; proxy: RpcProxy } {
+  const client = rpcConnect(options.url || '', options);
+  return {
+    connection: {
+      close: async (_reason?: string) => {
+        await client.close();
+      },
+    },
+    proxy: client,
+  };
+}
+
+// Re-export connect for convenience
+export { rpcConnect as connect };
 
 // ============================================================================
 // Configuration Types
@@ -41,8 +83,18 @@ export interface PoolOptions {
   maxConnections?: number;
   /** Time in ms before an idle connection is closed */
   idleTimeout?: number;
-  /** Time in ms to wait for an available connection */
+  /** Time in ms to wait for an available connection (default: 30000) */
   acquireTimeout?: number;
+}
+
+/**
+ * Options for acquiring a connection from the pool
+ */
+export interface AcquireOptions {
+  /** Timeout in milliseconds for acquiring a connection (default: 30000) */
+  timeout?: number;
+  /** Optional AbortSignal to cancel the acquire operation */
+  signal?: AbortSignal;
 }
 
 /**
@@ -61,6 +113,10 @@ export interface RetryOptions {
   retryableStatuses?: number[];
   /** Error codes that should trigger a retry */
   retryableErrors?: string[];
+  /** Timeout in ms for the entire retry operation (default: no timeout) */
+  timeout?: number;
+  /** Optional AbortSignal to cancel retry operation */
+  signal?: AbortSignal;
 }
 
 /**
@@ -100,23 +156,70 @@ interface PooledConnection {
 class ConnectionPool {
   private connections: Map<string, PooledConnection[]> = new Map();
   private readonly options: Required<PoolOptions>;
+  /** Pending acquire operations waiting for a connection */
+  private waitQueue: Map<string, Array<{
+    resolve: (pooled: PooledConnection) => void;
+    reject: (error: Error) => void;
+  }>> = new Map();
 
   constructor(options: PoolOptions = {}) {
     this.options = {
       minConnections: options.minConnections ?? 1,
       maxConnections: options.maxConnections ?? 10,
       idleTimeout: options.idleTimeout ?? 30000,
-      acquireTimeout: options.acquireTimeout ?? 5000,
+      acquireTimeout: options.acquireTimeout ?? 30000, // Default 30s as per issue spec
     };
   }
 
   /**
    * Acquire a connection from the pool
+   *
+   * @param url - The URL to connect to
+   * @param connectionOptions - Options for creating a new connection
+   * @param acquireOptions - Options for the acquire operation (timeout, signal)
    */
   async acquire(
     url: string,
-    connectionOptions: RpcConnectionOptions
+    connectionOptions: RpcConnectionOptions,
+    acquireOptions?: AcquireOptions
   ): Promise<{ connection: Connection; proxy: RpcProxy }> {
+    const timeout = acquireOptions?.timeout ?? this.options.acquireTimeout;
+    const externalSignal = acquireOptions?.signal;
+
+    // Create internal AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    // If external signal provided, listen for abort
+    const onExternalAbort = () => controller.abort();
+    externalSignal?.addEventListener('abort', onExternalAbort);
+
+    try {
+      return await this.acquireInternal(url, connectionOptions, controller.signal, timeout);
+    } finally {
+      clearTimeout(timeoutId);
+      externalSignal?.removeEventListener('abort', onExternalAbort);
+    }
+  }
+
+  /**
+   * Internal acquire implementation that respects AbortSignal
+   */
+  private async acquireInternal(
+    url: string,
+    connectionOptions: RpcConnectionOptions,
+    signal: AbortSignal,
+    timeout: number
+  ): Promise<{ connection: Connection; proxy: RpcProxy }> {
+    // Check if already aborted
+    if (signal.aborted) {
+      throw new PoolTimeoutError(
+        `Connection pool acquire timeout for ${url} after ${timeout}ms`,
+        url,
+        timeout
+      );
+    }
+
     let pool = this.connections.get(url);
     if (!pool) {
       pool = [];
@@ -134,7 +237,22 @@ class ConnectionPool {
 
     // Create a new connection if under limit
     if (pool.length < this.options.maxConnections) {
-      const { connection, proxy } = createConnection(connectionOptions);
+      // Check abort before creating connection
+      if (signal.aborted) {
+        throw new PoolTimeoutError(
+          `Connection pool acquire timeout for ${url} after ${timeout}ms`,
+          url,
+          timeout
+        );
+      }
+
+      // Pass signal to connection options for propagation to underlying transport
+      const connectionOptionsWithSignal: RpcConnectionOptions = {
+        ...connectionOptions,
+        signal, // Propagate signal to WebSocket/transport
+      };
+
+      const { connection, proxy } = createConnection(connectionOptionsWithSignal);
       const pooled: PooledConnection = {
         connection,
         proxy,
@@ -145,20 +263,94 @@ class ConnectionPool {
       return { connection, proxy };
     }
 
-    // Wait for an available connection
-    const startTime = Date.now();
-    while (Date.now() - startTime < this.options.acquireTimeout) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      for (const pooled of pool) {
-        if (!pooled.inUse) {
-          pooled.inUse = true;
-          pooled.lastUsed = Date.now();
-          return { connection: pooled.connection, proxy: pooled.proxy };
-        }
-      }
-    }
+    // Pool is at capacity - wait for an available connection
+    return this.waitForConnection(url, signal, timeout);
+  }
 
-    throw new Error(`Connection pool timeout for ${url}`);
+  /**
+   * Wait for a connection to become available (pool exhausted)
+   */
+  private waitForConnection(
+    url: string,
+    signal: AbortSignal,
+    timeout: number
+  ): Promise<{ connection: Connection; proxy: RpcProxy }> {
+    return new Promise((resolve, reject) => {
+      const pool = this.connections.get(url)!;
+
+      // Handler for when signal is aborted
+      const onAbort = () => {
+        // Remove from wait queue
+        const queue = this.waitQueue.get(url);
+        if (queue) {
+          const index = queue.findIndex((w) => w.resolve === waiterResolve);
+          if (index !== -1) {
+            queue.splice(index, 1);
+          }
+        }
+        reject(
+          new PoolTimeoutError(
+            `Connection pool acquire timeout for ${url} after ${timeout}ms`,
+            url,
+            timeout
+          )
+        );
+      };
+
+      // If already aborted, reject immediately
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+
+      // Waiter callbacks
+      const waiterResolve = (pooled: PooledConnection) => {
+        signal.removeEventListener('abort', onAbort);
+        pooled.inUse = true;
+        pooled.lastUsed = Date.now();
+        resolve({ connection: pooled.connection, proxy: pooled.proxy });
+      };
+
+      const waiterReject = (error: Error) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      };
+
+      // Add to wait queue
+      let queue = this.waitQueue.get(url);
+      if (!queue) {
+        queue = [];
+        this.waitQueue.set(url, queue);
+      }
+      queue.push({ resolve: waiterResolve, reject: waiterReject });
+
+      // Listen for abort
+      signal.addEventListener('abort', onAbort);
+
+      // Start polling for available connections
+      const pollInterval = setInterval(() => {
+        if (signal.aborted) {
+          clearInterval(pollInterval);
+          return;
+        }
+
+        for (const pooled of pool) {
+          if (!pooled.inUse) {
+            clearInterval(pollInterval);
+            // Remove from queue
+            const q = this.waitQueue.get(url);
+            if (q) {
+              const idx = q.findIndex((w) => w.resolve === waiterResolve);
+              if (idx !== -1) {
+                q.splice(idx, 1);
+              }
+            }
+            waiterResolve(pooled);
+            return;
+          }
+        }
+      }, 50);
+    });
   }
 
   /**
@@ -216,13 +408,21 @@ class ConnectionPool {
 // Retry Logic
 // ============================================================================
 
-const DEFAULT_RETRY_OPTIONS: Required<RetryOptions> = {
+// Type for internal retry options with required fields except signal
+type InternalRetryOptions = Omit<Required<RetryOptions>, 'signal' | 'timeout'> & {
+  timeout?: number;
+  signal?: AbortSignal;
+};
+
+const DEFAULT_RETRY_OPTIONS: InternalRetryOptions = {
   maxAttempts: 3,
   baseDelay: 100,
   maxDelay: 10000,
   backoffMultiplier: 2,
   retryableStatuses: [408, 429, 500, 502, 503, 504],
   retryableErrors: ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED', 'CONNECTION_ERROR'],
+  timeout: undefined,
+  signal: undefined,
 };
 
 /**
@@ -254,12 +454,32 @@ function isRetryableError(error: unknown, options: Required<RetryOptions>): bool
  */
 async function withRetry<T>(
   fn: () => Promise<T>,
-  options: Required<RetryOptions>,
+  options: InternalRetryOptions,
   onRetry?: (attempt: number, error: unknown) => void
 ): Promise<T> {
   let lastError: unknown;
+  const startTime = Date.now();
+
+  // Check if already aborted
+  if (options.signal?.aborted) {
+    const err = new Error('Operation aborted');
+    err.name = 'AbortError';
+    throw err;
+  }
 
   for (let attempt = 0; attempt < options.maxAttempts; attempt++) {
+    // Check timeout before each attempt
+    if (options.timeout && Date.now() - startTime >= options.timeout) {
+      throw new TimeoutError(`Retry operation timed out after ${options.timeout}ms`);
+    }
+
+    // Check abort signal before each attempt
+    if (options.signal?.aborted) {
+      const err = new Error('Operation aborted');
+      err.name = 'AbortError';
+      throw err;
+    }
+
     try {
       return await fn();
     } catch (error) {
@@ -268,7 +488,20 @@ async function withRetry<T>(
       if (attempt < options.maxAttempts - 1 && isRetryableError(error, options)) {
         const delay = calculateRetryDelay(attempt, options);
         onRetry?.(attempt + 1, error);
-        await new Promise((resolve) => setTimeout(resolve, delay));
+
+        // Check if delay would exceed timeout
+        if (options.timeout) {
+          const elapsed = Date.now() - startTime;
+          const remainingTime = options.timeout - elapsed;
+          if (remainingTime <= 0) {
+            throw new TimeoutError(`Retry operation timed out after ${options.timeout}ms`);
+          }
+          // Cap delay to remaining time
+          const cappedDelay = Math.min(delay, remainingTime);
+          await new Promise((resolve) => setTimeout(resolve, cappedDelay));
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
       } else {
         throw error;
       }
@@ -277,6 +510,7 @@ async function withRetry<T>(
 
   throw lastError;
 }
+
 
 // ============================================================================
 // DotDo Client
@@ -358,7 +592,7 @@ export class DotDo {
   connectOnce<T = $>(service: string): RpcProxy<T> {
     const url = this.resolveUrl(service);
     const connectionOptions = this.buildConnectionOptions(url);
-    return connect<T>(url, connectionOptions);
+    return rpcConnect<T>(url, connectionOptions);
   }
 
   /**
@@ -491,20 +725,10 @@ export async function to<T = $>(
 }
 
 // ============================================================================
-// Re-exports
+// Re-exports from rpc.do
 // ============================================================================
 
-export {
-  connect,
-  createConnection,
-  type RpcProxy,
-  type $,
-  type RpcConnectionOptions,
-  type Connection,
-  type Recording,
-  type MapOptions,
-  type RecordedCall,
-} from '@dotdo/rpc';
+export { RpcClient } from 'rpc.do';
 
 export type {
   TransportState,
@@ -512,12 +736,37 @@ export type {
   ConnectionStats,
 } from '@dotdo/capnweb';
 
+// Error types re-exported from rpc.do (which re-exports from @dotdo/capnweb)
+// This ensures a single source of truth for error classes
 export {
   CapnwebError,
   ConnectionError,
   RpcError,
   CapabilityError,
-} from '@dotdo/rpc';
+  TimeoutError,
+} from 'rpc.do';
+
+// ============================================================================
+// Pool-specific Error Types
+// ============================================================================
+
+/**
+ * Error thrown when acquiring a connection from the pool times out
+ */
+export class PoolTimeoutError extends Error {
+  public readonly code = 'POOL_TIMEOUT_ERROR';
+
+  constructor(
+    message: string,
+    public readonly url: string,
+    public readonly timeout: number
+  ) {
+    super(message);
+    this.name = 'PoolTimeoutError';
+    // Ensure proper prototype chain for instanceof checks
+    Object.setPrototypeOf(this, PoolTimeoutError.prototype);
+  }
+}
 
 // ============================================================================
 // Test Support
@@ -578,10 +827,9 @@ export interface TestServerInstance {
  * await server.shutdown();
  * ```
  */
-export async function createTestServer(config: TestServerConfig = {}): Promise<TestServerInstance> {
-  // Dynamic import to avoid loading server dependencies in client-only environments
-  const { setup } = await import('../../../test/server/dotdo-server.js');
-  return setup(config);
+export async function createTestServer(_config: TestServerConfig = {}): Promise<TestServerInstance> {
+  // TODO: Implement test server setup when test infrastructure is available
+  throw new Error('createTestServer not yet implemented - test server infrastructure pending');
 }
 
 /**

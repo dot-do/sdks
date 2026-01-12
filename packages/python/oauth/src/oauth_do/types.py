@@ -51,6 +51,22 @@ class AuthError(Exception):
         self.__cause__ = cause
 
 
+class StorageError(Exception):
+    """Exception raised for token storage errors.
+
+    This exception is raised when there are issues with reading, writing,
+    or deleting tokens from storage backends (file, keyring, etc.).
+
+    Attributes:
+        message: Human-readable error description
+        cause: The underlying exception that caused this error
+    """
+
+    def __init__(self, message: str, cause: Exception | None = None):
+        super().__init__(message)
+        self.__cause__ = cause
+
+
 @dataclass
 class OAuthConfig:
     """OAuth configuration options."""

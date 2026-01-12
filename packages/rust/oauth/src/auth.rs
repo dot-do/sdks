@@ -106,7 +106,7 @@ fn is_token_expired(expires_at: Option<u64>) -> bool {
         Some(exp) => {
             let now_ms = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .expect("System time is before Unix epoch - clock misconfigured")
                 .as_millis() as u64;
             now_ms >= exp.saturating_sub(REFRESH_BUFFER_MS)
         }
@@ -194,7 +194,7 @@ pub async fn get_token() -> Result<Option<String>> {
                     // Calculate new expiration time
                     let now_ms = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
+                        .expect("System time is before Unix epoch - clock misconfigured")
                         .as_millis() as u64;
 
                     let expires_at = new_tokens.expires_in.map(|e| now_ms + e * 1000);

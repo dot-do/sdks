@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.1.0"
+version = "0.1.0"
 author        = "DotDo Team"
 description   = "DotDo Cap'n Web RPC client for Nim - capability-based RPC with pipelining"
 license       = "MIT"
