@@ -1,0 +1,19 @@
+# frozen_string_literal: true
+
+source 'https://rubygems.org'
+
+# Runtime dependencies
+gem 'async', '~> 2.6'               # Fiber-based async runtime
+gem 'async-websocket', '~> 0.26'    # WebSocket client with async support
+
+# Test dependencies
+group :test do
+  gem 'rspec', '~> 3.12'
+  gem 'webmock', '~> 3.19'          # HTTP/WebSocket mocking
+end
+
+# Development dependencies
+group :development do
+  gem 'rubocop', '~> 1.56'
+  gem 'yard', '~> 0.9'
+end

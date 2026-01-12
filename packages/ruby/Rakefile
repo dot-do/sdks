@@ -1,0 +1,29 @@
+# frozen_string_literal: true
+
+require 'rspec/core/rake_task'
+
+RSpec::Core::RakeTask.new(:spec)
+
+namespace :conformance do
+  desc 'Run conformance tests against a test server'
+  RSpec::Core::RakeTask.new(:run) do |t|
+    t.pattern = 'spec/conformance_spec.rb'
+    t.rspec_opts = '--tag conformance'
+  end
+
+  desc 'List all conformance tests'
+  task :list do
+    require_relative 'spec/spec_helper'
+
+    ConformanceConfig.load_specs.each do |spec|
+      puts "\n#{spec['name']} (#{spec['_file']}.yaml)"
+      puts '-' * 40
+      spec['tests'].each do |test|
+        puts "  - #{test['name']}: #{test['description']}"
+      end
+    end
+  end
+end
+
+desc 'Run all tests (unit + conformance if server available)'
+task default: :spec
