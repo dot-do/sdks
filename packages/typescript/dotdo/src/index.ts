@@ -518,3 +518,101 @@ export {
   RpcError,
   CapabilityError,
 } from '@dotdo/rpc';
+
+// ============================================================================
+// Test Support
+// ============================================================================
+
+/**
+ * Test server configuration for SDK conformance testing
+ */
+export interface TestServerConfig {
+  /** Port to listen on (0 for ephemeral) */
+  port?: number;
+  /** API key requirement */
+  apiKey?: string;
+  /** Enable verbose logging */
+  verbose?: boolean;
+  /** Custom TestTarget implementation */
+  target?: unknown;
+}
+
+/**
+ * Test server instance returned by createTestServer
+ */
+export interface TestServerInstance {
+  /** HTTP URL for batch RPC */
+  url: string;
+  /** WebSocket URL for streaming RPC */
+  wsUrl: string;
+  /** DotDo client connected to this server */
+  client: DotDo;
+  /** Shutdown the server */
+  shutdown: () => Promise<void>;
+  /** Server port */
+  port: number;
+}
+
+/**
+ * Create a test server for SDK conformance testing.
+ *
+ * This function is designed for use in test frameworks to spin up
+ * a dotdo-backed test server for running conformance tests.
+ *
+ * @param config - Server configuration
+ * @returns Test server instance
+ *
+ * @example
+ * ```ts
+ * import { createTestServer } from 'platform.do';
+ *
+ * // In test setup
+ * const server = await createTestServer({ verbose: true });
+ *
+ * // Connect SDK to test server
+ * const client = await server.client.connect('test');
+ *
+ * // Run tests...
+ *
+ * // In test teardown
+ * await server.shutdown();
+ * ```
+ */
+export async function createTestServer(config: TestServerConfig = {}): Promise<TestServerInstance> {
+  // Dynamic import to avoid loading server dependencies in client-only environments
+  const { setup } = await import('../../../test/server/dotdo-server.js');
+  return setup(config);
+}
+
+/**
+ * Test client options for connecting to a test server
+ */
+export interface TestClientOptions extends DotDoOptions {
+  /** Test server URL */
+  serverUrl: string;
+}
+
+/**
+ * Create a DotDo client configured for testing.
+ *
+ * @param options - Test client options
+ * @returns Configured DotDo client
+ *
+ * @example
+ * ```ts
+ * import { createTestClient } from 'platform.do';
+ *
+ * const client = createTestClient({
+ *   serverUrl: 'http://localhost:8787',
+ *   debug: true,
+ * });
+ *
+ * const api = await client.connect('test');
+ * ```
+ */
+export function createTestClient(options: TestClientOptions): DotDo {
+  return new DotDo({
+    ...options,
+    baseUrl: options.serverUrl,
+  });
+}

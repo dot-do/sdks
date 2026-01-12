@@ -1,39 +1,105 @@
 # Cross-Language Test-Driven Development Strategy
 
-This document outlines the TDD strategy for testing all 17 language SDK clients against the official capnweb test server.
+This document outlines the TDD strategy for testing all 17 language SDK clients against the DotDo platform backend.
+
+## DotDo Platform Backend
+
+All SDK tests run against the **dotdo platform** (`platform.do`) as the backend. This ensures that:
+- All SDKs are tested against the production-like managed RPC layer
+- Authentication, connection pooling, and retry logic are verified
+- The full stack is exercised: SDK -> rpc.do -> platform.do -> capnweb
 
 ## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                     Test Orchestrator (Node.js)                      │
-│  • Starts test server                                                │
-│  • Runs language test suites in parallel                             │
-│  • Aggregates results                                                │
-│  • Generates reports                                                 │
+│  - Starts DotDo platform test server                                 │
+│  - Runs language test suites in parallel                             │
+│  - Aggregates results                                                │
+│  - Generates reports                                                 │
 └─────────────────────────────────────────────────────────────────────┘
                                    │
                     ┌──────────────┼──────────────┐
                     ▼              ▼              ▼
             ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
-            │ Test Server │ │ Test Spec   │ │ Results DB  │
-            │ (TypeScript)│ │ (YAML)      │ │ (JSON)      │
-            │ Port: 0     │ │ test/*.yaml │ │ .test-out/  │
+            │ DotDo Test  │ │ Test Spec   │ │ Results DB  │
+            │ Server      │ │ (YAML)      │ │ (JSON)      │
+            │ (platform.do)│ │ test/*.yaml │ │ test/results/│
             └─────────────┘ └─────────────┘ └─────────────┘
-                    │              │
-        ┌───────────┼───────────┬──┴──────────┬───────────┐
-        ▼           ▼           ▼             ▼           ▼
+                    │
+                    │ Uses dotdo managed RPC layer
+                    │
+            ┌───────┴───────┐
+            │   capnweb     │
+            │  (protocol)   │
+            └───────────────┘
+                    │
+        ┌───────────┼───────────┬──────────────┬───────────┐
+        ▼           ▼           ▼              ▼           ▼
    ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐
    │ Python  │ │  Rust   │ │   Go    │ │  Java   │ │  ...    │
    │ pytest  │ │ cargo   │ │ go test │ │ JUnit   │ │ (x17)   │
    └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘
 ```
 
+## Full Stack Testing
+
+The test infrastructure verifies the complete SDK stack:
+
+```
+SDK Client (any language)
+    │
+    ▼
+rpc.do (Promise Pipelining Layer)
+    │
+    ▼
+platform.do (DotDo Managed Connections)
+    - Authentication (API key, OAuth)
+    - Connection pooling
+    - Retry with exponential backoff
+    - Request timeout handling
+    │
+    ▼
+capnweb (Protocol Implementation)
+    - WebSocket RPC
+    - HTTP batch RPC
+    - Capability passing
+    - Promise pipelining
+```
+
 ## Components
 
-### 1. Test Server (Already Exists)
+### 1. DotDo Test Server
 
-The official capnweb test server at `__tests__/test-server.ts` exposes:
+The DotDo platform test server at `test/server/dotdo-server.ts` provides:
+- Full dotdo platform integration with auth/pooling/retry
+- WebSocket RPC at `ws://localhost:PORT/`
+- HTTP batch RPC at `POST http://localhost:PORT/`
+- Health check at `GET http://localhost:PORT/health`
+- Platform info at `GET http://localhost:PORT/platform`
+- Metrics at `GET http://localhost:PORT/metrics`
+
+There are two test servers available:
+- `test/server/server.ts` - Raw capnweb server (for protocol testing)
+- `test/server/dotdo-server.ts` - DotDo platform server (for SDK testing)
+
+**Running the servers:**
+```bash
+# Start raw capnweb server
+npm run test:server
+
+# Start DotDo platform server (recommended for SDK testing)
+npm run test:server:dotdo
+
+# Start with custom port and verbose logging
+npx tsx test/server/dotdo-server.ts --port 9000 --verbose
+
+# Start with API key authentication
+npx tsx test/server/dotdo-server.ts --api-key secret-key
+```
+
+The test server exposes:
 
 **TestTarget Methods:**
 | Method | Signature | Description |
@@ -242,22 +308,39 @@ For performance validation.
 ```
 dot-do-capnweb/
 ├── __tests__/
-│   ├── test-server.ts      # Official test server (unchanged)
-│   └── test-util.ts        # TestTarget, Counter (unchanged)
+│   ├── test-server.ts      # Vitest global setup server
+│   └── test-util.ts        # TestTarget, Counter classes
 ├── test/
+│   ├── server/             # DotDo test server infrastructure
+│   │   ├── package.json    # Server dependencies (platform.do, rpc.do)
+│   │   ├── server.ts       # Raw capnweb server
+│   │   ├── dotdo-server.ts # DotDo platform server (main backend)
+│   │   ├── handlers.ts     # TestTarget implementation
+│   │   ├── counter.ts      # Counter capability
+│   │   └── index.ts        # Exports
+│   ├── integration/        # Full stack integration tests
+│   │   ├── vitest.config.ts
+│   │   └── full-stack.test.ts
 │   ├── conformance/        # Language-agnostic test specs
 │   │   ├── basic.yaml
 │   │   ├── errors.yaml
 │   │   ├── types.yaml
 │   │   ├── pipelining.yaml
-│   │   └── capabilities.yaml
+│   │   ├── capabilities.yaml
+│   │   ├── callbacks.yaml
+│   │   └── map.yaml
 │   └── results/            # Generated test results
 │       ├── python.json
 │       ├── rust.json
+│       ├── summary.json
 │       └── ...
+├── packages/
+│   └── typescript/
+│       ├── capnweb/        # Core protocol types
+│       ├── rpc/            # Promise pipelining RPC
+│       └── dotdo/          # DotDo platform SDK (platform.do)
 ├── scripts/
 │   ├── test-all.ts         # Orchestrator
-│   ├── test-language.ts    # Single language runner
 │   └── generate-report.ts  # HTML/Markdown report generator
 └── packages/
     ├── python/
@@ -274,9 +357,18 @@ dot-do-capnweb/
 
 ## Running Tests
 
+### Integration Tests (Full Stack)
+```bash
+# Run full stack integration tests (SDK -> rpc.do -> dotdo -> capnweb)
+npm run test:integration
+
+# Run integration tests in watch mode
+npm run test:integration:watch
+```
+
 ### All Languages
 ```bash
-# Run all language tests in parallel
+# Run all language tests in parallel against dotdo server
 npm run test:all
 
 # Run with verbose output
@@ -297,6 +389,18 @@ npm run test:lang go
 cd packages/python && pytest
 cd packages/rust && cargo test
 cd packages/go && go test ./...
+```
+
+### Test Server Commands
+```bash
+# Start raw capnweb server
+npm run test:server
+
+# Start DotDo platform server (recommended)
+npm run test:server:dotdo
+
+# Start server with options
+npx tsx test/server/dotdo-server.ts --port 8787 --verbose --api-key secret
 ```
 
 ### CI Integration
@@ -489,3 +593,64 @@ TEST_SERVER_URL=http://localhost:8787 npm run test:lang python -- -v -k "test_na
 
 **Q: How do I add a new test case?**
 A: Add it to the appropriate YAML file in `test/conformance/`. All languages will automatically pick it up.
+
+## DotDo Platform Integration
+
+### Using createTestServer in Tests
+
+The `platform.do` package exports a `createTestServer` function for programmatic test setup:
+
+```typescript
+import { createTestServer, createTestClient } from 'platform.do';
+
+// In test setup
+const server = await createTestServer({
+  port: 0,        // Use ephemeral port
+  verbose: true,  // Enable logging
+  apiKey: 'test', // Optional authentication
+});
+
+// Connect with the provided client
+const api = await server.client.connect(server.url);
+
+// Or create your own client
+const client = createTestClient({
+  serverUrl: server.url,
+  debug: true,
+});
+const api2 = await client.connect('test');
+
+// Run tests...
+const result = await api.square(5);
+
+// In test teardown
+await server.shutdown();
+```
+
+### Server Endpoints
+
+The DotDo test server provides these endpoints:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | POST | Batch RPC requests |
+| `/` | WebSocket | Streaming RPC |
+| `/health` | GET | Health check (`{ status: 'ok', platform: 'dotdo' }`) |
+| `/platform` | GET | Platform info and features |
+| `/metrics` | GET | Connection and request metrics |
+
+### Authentication
+
+When running with `--api-key`, all requests must include:
+- HTTP: `Authorization: Bearer <key>` header
+- WebSocket: `?token=<key>` query parameter
+
+### Platform Features
+
+The DotDo platform backend includes:
+- `websocket-rpc` - Real-time WebSocket RPC
+- `http-batch-rpc` - HTTP batch requests
+- `promise-pipelining` - Single round-trip method chains
+- `capability-passing` - Pass capabilities as arguments
+- `callbacks` - Server calling client functions
+- `server-side-map` - Map operations on server

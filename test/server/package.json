@@ -1,0 +1,25 @@
+{
+  "name": "@dotdo/test-server",
+  "version": "0.1.0",
+  "description": "DotDo Conformance Test Server - Tests all SDKs against the dotdo platform",
+  "type": "module",
+  "private": true,
+  "main": "./index.ts",
+  "scripts": {
+    "start": "tsx server.ts",
+    "start:dotdo": "tsx dotdo-server.ts",
+    "dev": "tsx --watch server.ts"
+  },
+  "dependencies": {
+    "platform.do": "workspace:*",
+    "rpc.do": "workspace:*",
+    "capnweb": "workspace:../../.."
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/ws": "^8.5.10",
+    "tsx": "^4.21.0",
+    "typescript": "^5.3.0",
+    "ws": "^8.18.0"
+  }
+}
