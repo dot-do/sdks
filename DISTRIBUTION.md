@@ -30,11 +30,11 @@ These registries have scoped packages but the scope is just a registered name, n
 
 | Language | Registry | URL | Namespace Format | Our Namespace |
 |----------|----------|-----|------------------|---------------|
-| TypeScript/JS | npm | https://www.npmjs.com | `@org/package` | `@dot-do/*` |
-| Deno | JSR | https://jsr.io | `@scope/package` | `@dot-do/*` |
+| TypeScript/JS | npm | https://www.npmjs.com | `@org/package` | `@dotdo/*` |
+| Deno | JSR | https://jsr.io | `@scope/package` | `@dotdo/*` |
 | C#/.NET | NuGet | https://www.nuget.org | `Org.Package` | `DotDo.*` |
 | F# | NuGet | https://www.nuget.org | `Org.Package` | `DotDo.*` |
-| PHP | Packagist | https://packagist.org | `vendor/package` | `dot-do/*` |
+| PHP | Packagist | https://packagist.org | `vendor/package` | `dotdo/*` |
 
 ### Registries WITHOUT Namespaces
 
@@ -57,8 +57,8 @@ These registries use flat naming. We need to register each package name individu
 
 | Language | Package Name | Install Command |
 |----------|--------------|-----------------|
-| TypeScript | `@dot-do/capnweb` | `npm install @dot-do/capnweb` |
-| Deno | `@dot-do/capnweb` | `deno add @dot-do/capnweb` |
+| TypeScript | `@dotdo/capnweb` | `npm install @dotdo/capnweb` |
+| Deno | `@dotdo/capnweb` | `deno add @dotdo/capnweb` |
 | Python | `dotdo-capnweb` | `pip install dotdo-capnweb` |
 | Rust | `dotdo-capnweb` | `cargo add dotdo-capnweb` |
 | Go | `go.platform.do/capnweb` | `go get go.platform.do/capnweb` |
@@ -68,7 +68,7 @@ These registries use flat naming. We need to register each package name individu
 | Scala | `do.platform::capnweb` | `"do.platform" %% "capnweb" % "0.1.0"` |
 | C# | `DotDo.CapnWeb` | `dotnet add package DotDo.CapnWeb` |
 | F# | `DotDo.CapnWeb` | `dotnet add package DotDo.CapnWeb` |
-| PHP | `dot-do/capnweb` | `composer require dot-do/capnweb` |
+| PHP | `dotdo/capnweb` | `composer require dotdo/capnweb` |
 | Swift | `DotDoCapnWeb` | `.package(url: "https://github.com/dot-do/capnweb-swift")` |
 | Dart | `dotdo_capnweb` | `dart pub add dotdo_capnweb` |
 | Elixir | `:dotdo_capnweb` | `{:dotdo_capnweb, "~> 0.1.0"}` |
@@ -80,8 +80,8 @@ These registries use flat naming. We need to register each package name individu
 
 | Language | Package Name | Install Command |
 |----------|--------------|-----------------|
-| TypeScript | `@dot-do/rpc` | `npm install @dot-do/rpc` |
-| Deno | `@dot-do/rpc` | `deno add @dot-do/rpc` |
+| TypeScript | `@dotdo/rpc` | `npm install @dotdo/rpc` |
+| Deno | `@dotdo/rpc` | `deno add @dotdo/rpc` |
 | Python | `dotdo-rpc` | `pip install dotdo-rpc` |
 | Rust | `dotdo-rpc` | `cargo add dotdo-rpc` |
 | Go | `go.platform.do/rpc` | `go get go.platform.do/rpc` |
@@ -91,7 +91,7 @@ These registries use flat naming. We need to register each package name individu
 | Scala | `do.platform::rpc` | `"do.platform" %% "rpc" % "0.1.0"` |
 | C# | `DotDo.Rpc` | `dotnet add package DotDo.Rpc` |
 | F# | `DotDo.Rpc` | `dotnet add package DotDo.Rpc` |
-| PHP | `dot-do/rpc` | `composer require dot-do/rpc` |
+| PHP | `dotdo/rpc` | `composer require dotdo/rpc` |
 | Swift | `DotDoRpc` | `.package(url: "https://github.com/dot-do/rpc-swift")` |
 | Dart | `dotdo_rpc` | `dart pub add dotdo_rpc` |
 | Elixir | `:dotdo_rpc` | `{:dotdo_rpc, "~> 0.1.0"}` |
@@ -114,7 +114,7 @@ These registries use flat naming. We need to register each package name individu
 | Scala | `do.platform::core` | `"do.platform" %% "core" % "0.1.0"` |
 | C# | `DotDo` | `dotnet add package DotDo` |
 | F# | `DotDo` | `dotnet add package DotDo` |
-| PHP | `dot-do/dotdo` | `composer require dot-do/dotdo` |
+| PHP | `dotdo/dotdo` | `composer require dotdo/dotdo` |
 | Swift | `DotDo` | `.package(url: "https://github.com/dot-do/dotdo-swift")` |
 | Dart | `dotdo` | `dart pub add dotdo` |
 | Elixir | `:dotdo` | `{:dotdo, "~> 0.1.0"}` |
@@ -128,11 +128,11 @@ These packages will live in separate repositories and provide API-compatible int
 
 | Package | TypeScript | Python | Go | Java |
 |---------|------------|--------|-----|------|
-| MongoDB | `@dot-do/mongo` | `dotdo-mongo` | `go.platform.do/mongo` | `do.platform:mongo` |
-| Kafka | `@dot-do/kafka` | `dotdo-kafka` | `go.platform.do/kafka` | `do.platform:kafka` |
-| Redis | `@dot-do/redis` | `dotdo-redis` | `go.platform.do/redis` | `do.platform:redis` |
-| Database | `@dot-do/db` | `dotdo-db` | `go.platform.do/db` | `do.platform:db` |
-| Agents | `@dot-do/agents` | `dotdo-agents` | `go.platform.do/agents` | `do.platform:agents` |
+| MongoDB | `@dotdo/mongo` | `dotdo-mongo` | `go.platform.do/mongo` | `do.platform:mongo` |
+| Kafka | `@dotdo/kafka` | `dotdo-kafka` | `go.platform.do/kafka` | `do.platform:kafka` |
+| Redis | `@dotdo/redis` | `dotdo-redis` | `go.platform.do/redis` | `do.platform:redis` |
+| Database | `@dotdo/db` | `dotdo-db` | `go.platform.do/db` | `do.platform:db` |
+| Agents | `@dotdo/agents` | `dotdo-agents` | `go.platform.do/agents` | `do.platform:agents` |
 
 ## Registry Setup Requirements
 
@@ -194,11 +194,11 @@ Clojars doesn't require domain verification. Just use the group ID:
 
 ### Name-Based Registries
 
-#### npm (`@dot-do`)
+#### npm (`@dotdo`)
 
 ```bash
 # Create organization (requires npm account)
-npm org create dot-do
+npm org create dotdo
 
 # Publish scoped package
 npm publish --access public
@@ -252,7 +252,7 @@ gem push dotdo-capnweb-0.1.0.gem
 dotnet nuget push DotDo.CapnWeb.0.1.0.nupkg --api-key YOUR_KEY --source https://api.nuget.org/v3/index.json
 ```
 
-#### Packagist (`dot-do/*`)
+#### Packagist (`dotdo/*`)
 
 1. Create account at https://packagist.org
 2. Submit GitHub repository URL
@@ -277,8 +277,8 @@ github.com/dot-do/
 ├── rpc/                    # This repo - core RPC packages (all 17 languages)
 │   ├── packages/
 │   │   ├── typescript/
-│   │   │   ├── capnweb/    # @dot-do/capnweb
-│   │   │   ├── rpc/        # @dot-do/rpc
+│   │   │   ├── capnweb/    # @dotdo/capnweb
+│   │   │   ├── rpc/        # @dotdo/rpc
 │   │   │   └── dotdo/      # dotdo
 │   │   ├── python/
 │   │   └── ...
@@ -286,7 +286,7 @@ github.com/dot-do/
 │
 ├── mongo/                  # MongoDB-compatible client
 │   ├── packages/
-│   │   ├── typescript/     # @dot-do/mongo
+│   │   ├── typescript/     # @dotdo/mongo
 │   │   ├── python/         # dotdo-mongo
 │   │   └── ...
 │   └── ...
@@ -363,7 +363,7 @@ Priority order for claiming package names:
 
 ### Immediate (Before Public Announcement)
 
-- [ ] npm: `@dot-do` organization + `dotdo` package
+- [ ] npm: `@dotdo` organization + `dotdo` package
 - [ ] PyPI: `dotdo`, `dotdo-capnweb`, `dotdo-rpc`
 - [ ] crates.io: `dotdo`, `dotdo-capnweb`, `dotdo-rpc`
 - [ ] NuGet: Reserve `DotDo.` prefix
@@ -372,11 +372,11 @@ Priority order for claiming package names:
 ### Before First Release
 
 - [ ] RubyGems: `dotdo`, `dotdo-capnweb`, `dotdo-rpc`
-- [ ] Packagist: `dot-do/*`
+- [ ] Packagist: `dotdo/*`
 - [ ] pub.dev: `dotdo`, `dotdo_capnweb`, `dotdo_rpc`
 - [ ] Hex: `dotdo`, `dotdo_capnweb`, `dotdo_rpc`
 - [ ] Clojars: `do.platform/*`
-- [ ] JSR: `@dot-do/*`
+- [ ] JSR: `@dotdo/*`
 
 ### Domain Setup
 
@@ -390,5 +390,5 @@ Priority order for claiming package names:
 | Type | Registries | Our Pattern |
 |------|------------|-------------|
 | **Domain-based** | Go, Maven, Clojars | `do.platform:*` / `go.platform.do/*` |
-| **Name-scoped** | npm, JSR, NuGet, Packagist | `@dot-do/*` / `DotDo.*` / `dot-do/*` |
+| **Name-scoped** | npm, JSR, NuGet, Packagist | `@dotdo/*` / `DotDo.*` / `dotdo/*` |
 | **Flat naming** | PyPI, crates.io, RubyGems, pub.dev, Hex, Shards, Nimble | `dotdo-*` / `dotdo_*` |
