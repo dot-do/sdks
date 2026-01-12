@@ -1,0 +1,64 @@
+# Callback/Bidirectional RPC Tests
+# These tests verify the server can call functions exported by the client
+
+name: Bidirectional RPC (Callbacks)
+description: Verify server can invoke client-exported functions
+
+tests:
+  - name: simple_callback
+    description: Server calls client function with single argument
+    export:
+      name: doubler
+      type: function
+      behavior: "x => x * 2"
+    call: callFunction
+    args: ["$doubler", 21]
+    expect:
+      result: 42
+
+  - name: callback_with_computation
+    description: Server calls client function that does computation
+    export:
+      name: squarer
+      type: function
+      behavior: "x => x * x"
+    call: callFunction
+    args: ["$squarer", 8]
+    expect:
+      result: 64
+
+  - name: callback_returns_zero
+    description: Callback returning zero
+    export:
+      name: returnsZero
+      type: function
+      behavior: "x => 0"
+    call: callFunction
+    args: ["$returnsZero", 999]
+    expect:
+      result: 0
+
+  - name: callback_negative
+    description: Callback with negative numbers
+    export:
+      name: negater
+      type: function
+      behavior: "x => -x"
+    call: callFunction
+    args: ["$negater", 42]
+    expect:
+      result: -42
+
+  - name: callback_identity
+    description: Callback that returns input unchanged
+    export:
+      name: identity
+      type: function
+      behavior: "x => x"
+    call: callFunction
+    args: ["$identity", 123]
+    expect:
+      result: 123
+
+  # Note: More complex callback tests (stateful callbacks, async callbacks,
+  # callback chains) should be added as Level 2 tests

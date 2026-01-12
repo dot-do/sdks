@@ -1,0 +1,94 @@
+# Basic RPC Call Tests
+# These tests verify fundamental RPC functionality
+
+name: Basic RPC Calls
+description: Verify basic method invocation and return values
+
+tests:
+  # square() tests
+  - name: square_positive
+    description: Square a positive integer
+    call: square
+    args: [5]
+    expect: 25
+
+  - name: square_negative
+    description: Square a negative integer
+    call: square
+    args: [-3]
+    expect: 9
+
+  - name: square_zero
+    description: Square zero
+    call: square
+    args: [0]
+    expect: 0
+
+  - name: square_large
+    description: Square a large number
+    call: square
+    args: [1000]
+    expect: 1000000
+
+  # returnNumber() tests
+  - name: return_number_positive
+    description: Return positive number unchanged
+    call: returnNumber
+    args: [42]
+    expect: 42
+
+  - name: return_number_negative
+    description: Return negative number unchanged
+    call: returnNumber
+    args: [-17]
+    expect: -17
+
+  - name: return_number_zero
+    description: Return zero unchanged
+    call: returnNumber
+    args: [0]
+    expect: 0
+
+  - name: return_number_float
+    description: Return floating point number
+    call: returnNumber
+    args: [3.14159]
+    expect: 3.14159
+
+  # returnNull() / returnUndefined() tests
+  - name: return_null
+    description: Return null value
+    call: returnNull
+    args: []
+    expect: null
+
+  - name: return_undefined
+    description: Return undefined value
+    call: returnUndefined
+    args: []
+    expect: null  # undefined serializes to null in JSON
+
+  # generateFibonacci() tests
+  - name: fibonacci_zero
+    description: Generate empty Fibonacci sequence
+    call: generateFibonacci
+    args: [0]
+    expect: []
+
+  - name: fibonacci_one
+    description: Generate single Fibonacci number
+    call: generateFibonacci
+    args: [1]
+    expect: [0]
+
+  - name: fibonacci_two
+    description: Generate first two Fibonacci numbers
+    call: generateFibonacci
+    args: [2]
+    expect: [0, 1]
+
+  - name: fibonacci_ten
+    description: Generate first ten Fibonacci numbers
+    call: generateFibonacci
+    args: [10]
+    expect: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]

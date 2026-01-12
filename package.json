@@ -31,6 +31,9 @@
     "build:watch": "tsup --watch --format esm,cjs",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:all": "tsx scripts/test-all.ts",
+    "test:lang": "tsx scripts/test-all.ts",
+    "test:report": "tsx scripts/generate-report.ts",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {

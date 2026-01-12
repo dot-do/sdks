@@ -1,0 +1,85 @@
+# Promise Pipelining Tests
+# These tests verify that pipelining works correctly and efficiently
+
+name: Promise Pipelining
+description: Verify promise pipelining reduces round trips
+
+tests:
+  - name: pipeline_make_and_read_counter
+    description: Create counter and read value in one round trip
+    pipeline:
+      - call: makeCounter
+        args: [42]
+        as: counter
+      - call: counter.value
+        args: []
+    expect: 42
+    max_round_trips: 1
+
+  - name: pipeline_make_and_increment
+    description: Create counter and increment in one round trip
+    pipeline:
+      - call: makeCounter
+        args: [10]
+        as: counter
+      - call: counter.increment
+        args: [5]
+    expect: 15
+    max_round_trips: 1
+
+  - name: pipeline_multiple_increments
+    description: Multiple increments should each add to the counter
+    pipeline:
+      - call: makeCounter
+        args: [0]
+        as: counter
+      - call: counter.increment
+        args: [1]
+        as: first
+      - call: counter.increment
+        args: [2]
+        as: second
+      - call: counter.increment
+        args: [3]
+        as: third
+    expect:
+      first: 1
+      second: 3
+      third: 6
+    max_round_trips: 1
+
+  - name: pipeline_self_reference
+    description: Pass stub back to server (callSquare)
+    setup:
+      - call: makeCounter
+        args: [0]
+        as: target  # We need a TestTarget stub, using Counter as proxy
+    call: callSquare
+    args: ["$self", 7]  # $self refers to the root TestTarget
+    expect:
+      result: 49
+    max_round_trips: 1
+
+  - name: pipeline_counter_through_increment
+    description: Use incrementCounter with pipelined counter
+    pipeline:
+      - call: makeCounter
+        args: [100]
+        as: counter
+      - call: incrementCounter
+        args: ["$counter", 50]
+    expect: 150
+    max_round_trips: 1
+
+  - name: pipeline_deep_chain
+    description: Chain multiple property accesses
+    pipeline:
+      - call: makeCounter
+        args: [5]
+        as: c1
+      - call: c1.increment
+        args: [10]
+      - call: c1.value
+        as: final
+    expect:
+      final: 15

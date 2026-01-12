@@ -1,0 +1,84 @@
+# Capability Passing Tests
+# These tests verify passing stubs/capabilities as arguments
+
+name: Capability Passing
+description: Verify stubs can be passed as arguments to remote methods
+
+tests:
+  - name: pass_counter_to_increment
+    description: Create counter, pass it to incrementCounter
+    setup:
+      - call: makeCounter
+        args: [25]
+        as: counter
+        await: true  # Need to await this before passing
+    call: incrementCounter
+    args: ["$counter", 10]
+    expect: 35
+
+  - name: pass_counter_multiple_times
+    description: Same counter passed to multiple calls
+    setup:
+      - call: makeCounter
+        args: [0]
+        as: counter
+        await: true
+    sequence:
+      - call: incrementCounter
+        args: ["$counter", 5]
+        expect: 5
+      - call: incrementCounter
+        args: ["$counter", 3]
+        expect: 8
+      - call: incrementCounter
+        args: ["$counter", 2]
+        expect: 10
+
+  - name: counter_state_persists
+    description: Counter maintains state across calls
+    setup:
+      - call: makeCounter
+        args: [100]
+        as: counter
+        await: true
+    sequence:
+      - call: counter.increment
+        args: [1]
+        expect: 101
+      - call: counter.value
+        expect: 101
+      - call: counter.increment
+        args: [-50]
+        expect: 51
+      - call: counter.value
+        expect: 51
+
+  - name: multiple_counters
+    description: Multiple independent counters
+    setup:
+      - call: makeCounter
+        args: [10]
+        as: counter1
+        await: true
+      - call: makeCounter
+        args: [20]
+        as: counter2
+        await: true
+    sequence:
+      - call: counter1.increment
+        args: [5]
+        expect: 15
+      - call: counter2.increment
+        args: [5]
+        expect: 25
+      - call: counter1.value
+        expect: 15
+      - call: counter2.value
+        expect: 25
+
+  - name: pass_self_reference
+    description: Pass root stub back to server
+    call: callSquare
+    args: ["$self", 9]
+    expect:
+      result: 81

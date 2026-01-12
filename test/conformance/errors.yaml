@@ -1,0 +1,44 @@
+# Error Handling Tests
+# These tests verify that errors are properly propagated from server to client
+
+name: Error Handling
+description: Verify error propagation and error type preservation
+
+tests:
+  - name: throw_range_error
+    description: Server throws RangeError, client receives it
+    call: throwError
+    args: []
+    expect_error:
+      type: RangeError
+      message_contains: "test error"
+
+  - name: call_nonexistent_method
+    description: Calling a method that doesn't exist
+    call: nonExistentMethod
+    args: []
+    expect_error:
+      type: Error
+      message_contains: "not a function"
+
+  - name: wrong_argument_count
+    description: Calling with wrong number of arguments should still work
+    call: square
+    args: []  # Missing required argument
+    expect_error:
+      # JavaScript will call with undefined, which NaN * NaN = NaN
+      # Different languages may handle this differently
+      any_of:
+        - type: Error
+        - value: null  # NaN serializes oddly
+
+  - name: error_in_pipeline
+    description: Error in pipelined call should reject the whole chain
+    pipeline:
+      - call: makeCounter
+        args: [10]
+        as: counter
+      - call: counter.nonExistent
+        args: []
+    expect_error:
+      type: Error

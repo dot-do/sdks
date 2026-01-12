@@ -1,0 +1,81 @@
+# Type Serialization Tests
+# These tests verify different data types serialize correctly
+
+name: Type Serialization
+description: Verify various data types are serialized and deserialized correctly
+
+tests:
+  # Numbers
+  - name: type_integer
+    call: returnNumber
+    args: [42]
+    expect: 42
+
+  - name: type_negative_integer
+    call: returnNumber
+    args: [-123]
+    expect: -123
+
+  - name: type_float
+    call: returnNumber
+    args: [3.14159265359]
+    expect: 3.14159265359
+
+  - name: type_zero
+    call: returnNumber
+    args: [0]
+    expect: 0
+
+  - name: type_negative_zero
+    call: returnNumber
+    args: [-0]
+    expect: 0  # -0 becomes 0 in JSON
+
+  # Large numbers (within safe integer range)
+  - name: type_large_integer
+    call: returnNumber
+    args: [9007199254740991]  # Number.MAX_SAFE_INTEGER
+    expect: 9007199254740991
+
+  - name: type_negative_large
+    call: returnNumber
+    args: [-9007199254740991]
+    expect: -9007199254740991
+
+  # Null/Undefined
+  - name: type_null
+    call: returnNull
+    args: []
+    expect: null
+
+  - name: type_undefined
+    call: returnUndefined
+    args: []
+    expect: null  # undefined -> null in JSON
+
+  # Arrays (via Fibonacci)
+  - name: type_empty_array
+    call: generateFibonacci
+    args: [0]
+    expect: []
+
+  - name: type_array_single
+    call: generateFibonacci
+    args: [1]
+    expect: [0]
+
+  - name: type_array_multiple
+    call: generateFibonacci
+    args: [5]
+    expect: [0, 1, 1, 2, 3]
+
+  # Objects (via callSquare result)
+  - name: type_object_simple
+    call: callSquare
+    args: ["$self", 4]
+    expect:
+      result: 16
+
+  # Note: More complex type tests (Date, Uint8Array, BigInt, Error)
+  # require the test server to have methods that return those types.
+  # These should be added to test-util.ts if needed.
