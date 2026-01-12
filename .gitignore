@@ -4,3 +4,7 @@ examples/worker-react/web/dist/
 notes.txt
 /dist/
 packages/swift/.build/
+
+# Rust
+target/
+Cargo.lock
