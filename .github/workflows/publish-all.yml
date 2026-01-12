@@ -1,0 +1,578 @@
+name: Publish All Packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 0.1.0)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Dry run (check versions only)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+
+env:
+  VERSION: ${{ github.event.inputs.version || github.event.release.tag_name }}
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════
+  # npm - TypeScript packages
+  # ═══════════════════════════════════════════════════════════════
+  publish-npm:
+    runs-on: ubuntu-latest
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - { path: "packages/typescript/capnweb", name: "@dotdo/capnweb" }
+          - { path: "packages/typescript/rpc", name: "rpc.do" }
+          - { path: "packages/typescript/dotdo", name: "dotdo" }
+          - { path: "packages/typescript/oauth", name: "oauth.do" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Check if version exists
+        id: check
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"  # Remove 'v' prefix if present
+          if npm view "${{ matrix.package.name }}@${VERSION}" version 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "${{ matrix.package.name }}@${VERSION} already published"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "${{ matrix.package.name }}@${VERSION} not found - will publish"
+          fi
+
+      - name: Install dependencies
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: npm install
+
+      - name: Build
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: npm run build || true
+
+      - name: Update version
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # ═══════════════════════════════════════════════════════════════
+  # PyPI - Python packages
+  # ═══════════════════════════════════════════════════════════════
+  publish-pypi:
+    runs-on: ubuntu-latest
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - { path: "packages/python/capnweb", name: "capnweb-do" }
+          - { path: "packages/python/rpc", name: "rpc-do" }
+          - { path: "packages/python/dotdo", name: "dotdo" }
+          - { path: "packages/python/oauth", name: "oauth-do" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build tools
+        run: pip install build twine
+
+      - name: Check if version exists
+        id: check
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          if curl -sf "https://pypi.org/pypi/${{ matrix.package.name }}/${VERSION}/json" >/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "${{ matrix.package.name }}==${VERSION} already published"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "${{ matrix.package.name }}==${VERSION} not found - will publish"
+          fi
+
+      - name: Update version
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" pyproject.toml
+
+      - name: Build
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: python -m build
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: python -m twine upload dist/* --skip-existing
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+
+  # ═══════════════════════════════════════════════════════════════
+  # crates.io - Rust packages
+  # ═══════════════════════════════════════════════════════════════
+  publish-crates:
+    runs-on: ubuntu-latest
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - { path: "packages/rust/capnweb", name: "capnweb-do" }
+          - { path: "packages/rust/rpc", name: "rpc-do" }
+          - { path: "packages/rust/dotdo", name: "dotdo" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Check if version exists
+        id: check
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          if curl -sf "https://crates.io/api/v1/crates/${{ matrix.package.name }}/${VERSION}" | grep -q '"version"'; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "${{ matrix.package.name }}@${VERSION} already published"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "${{ matrix.package.name }}@${VERSION} not found - will publish"
+          fi
+
+      - name: Update version
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: cargo publish --allow-dirty
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
+
+  # ═══════════════════════════════════════════════════════════════
+  # NuGet - C# packages
+  # ═══════════════════════════════════════════════════════════════
+  publish-nuget:
+    runs-on: ubuntu-latest
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - { path: "packages/dotnet/capnweb", name: "DotDo.CapnWeb" }
+          - { path: "packages/dotnet/rpc", name: "DotDo.Rpc" }
+          - { path: "packages/dotnet/dotdo", name: "DotDo" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Check if version exists
+        id: check
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          PKG_LOWER=$(echo "${{ matrix.package.name }}" | tr '[:upper:]' '[:lower:]')
+          if curl -sf "https://api.nuget.org/v3-flatcontainer/${PKG_LOWER}/${VERSION}/${PKG_LOWER}.nuspec" >/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "${{ matrix.package.name }}@${VERSION} already published"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "${{ matrix.package.name }}@${VERSION} not found - will publish"
+          fi
+
+      - name: Build and Pack
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          dotnet pack -c Release /p:Version="${VERSION}" -o ./nupkg
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          dotnet nuget push ./nupkg/*.nupkg \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+  # ═══════════════════════════════════════════════════════════════
+  # NuGet - F# packages
+  # ═══════════════════════════════════════════════════════════════
+  publish-nuget-fsharp:
+    runs-on: ubuntu-latest
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - { path: "packages/fsharp/capnweb", name: "DotDo.CapnWeb.FSharp" }
+          - { path: "packages/fsharp/rpc", name: "DotDo.Rpc.FSharp" }
+          - { path: "packages/fsharp/dotdo", name: "DotDo.FSharp" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Check if version exists
+        id: check
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          PKG_LOWER=$(echo "${{ matrix.package.name }}" | tr '[:upper:]' '[:lower:]')
+          if curl -sf "https://api.nuget.org/v3-flatcontainer/${PKG_LOWER}/${VERSION}/${PKG_LOWER}.nuspec" >/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and Pack
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          dotnet pack -c Release /p:Version="${VERSION}" -o ./nupkg
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          dotnet nuget push ./nupkg/*.nupkg \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+  # ═══════════════════════════════════════════════════════════════
+  # RubyGems - Ruby packages
+  # ═══════════════════════════════════════════════════════════════
+  publish-rubygems:
+    runs-on: ubuntu-latest
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - { path: "packages/ruby/capnweb", name: "capnweb.do", gemspec: "capnweb.do.gemspec" }
+          - { path: "packages/ruby/rpc", name: "rpc.do", gemspec: "rpc.do.gemspec" }
+          - { path: "packages/ruby/dotdo", name: "platform.do", gemspec: "platform.do.gemspec" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+
+      - name: Check if version exists
+        id: check
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          if curl -sf "https://rubygems.org/api/v1/versions/${{ matrix.package.name }}.json" | grep -q "\"number\":\"${VERSION}\""; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version and build
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          # Update version in gemspec
+          sed -i "s/spec.version.*=.*/spec.version = '${VERSION}'/" ${{ matrix.package.gemspec }}
+          gem build ${{ matrix.package.gemspec }}
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          mkdir -p ~/.gem
+          echo ":rubygems_api_key: ${{ secrets.RUBYGEMS_API_KEY }}" > ~/.gem/credentials
+          chmod 0600 ~/.gem/credentials
+          gem push *.gem
+
+  # ═══════════════════════════════════════════════════════════════
+  # Hex.pm - Elixir packages
+  # ═══════════════════════════════════════════════════════════════
+  publish-hex:
+    runs-on: ubuntu-latest
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - { path: "packages/elixir/capnweb", name: "capnweb_do" }
+          - { path: "packages/elixir/rpc", name: "rpc_do" }
+          - { path: "packages/elixir/dotdo", name: "dotdo" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.15'
+          otp-version: '26'
+
+      - name: Check if version exists
+        id: check
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          if curl -sf "https://hex.pm/api/packages/${{ matrix.package.name }}" | grep -q "\"version\":\"${VERSION}\""; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          sed -i "s/@version \".*\"/@version \"${VERSION}\"/" mix.exs
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          mix deps.get
+          mix hex.publish --yes
+        env:
+          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+
+  # ═══════════════════════════════════════════════════════════════
+  # pub.dev - Dart packages
+  # ═══════════════════════════════════════════════════════════════
+  publish-pub:
+    runs-on: ubuntu-latest
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - { path: "packages/dart/capnweb", name: "capnweb_do" }
+          - { path: "packages/dart/rpc", name: "rpc_do" }
+          - { path: "packages/dart/dotdo", name: "dotdo" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+
+      - name: Check if version exists
+        id: check
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          if curl -sf "https://pub.dev/api/packages/${{ matrix.package.name }}" | grep -q "\"version\":\"${VERSION}\""; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          sed -i "s/^version: .*/version: ${VERSION}/" pubspec.yaml
+
+      - name: Setup pub credentials
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        run: |
+          mkdir -p ~/.config/dart
+          echo '${{ secrets.PUB_CREDENTIALS }}' > ~/.config/dart/pub-credentials.json
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: dart pub publish --force
+
+  # ═══════════════════════════════════════════════════════════════
+  # Maven Central - Java packages
+  # ═══════════════════════════════════════════════════════════════
+  publish-maven-java:
+    runs-on: ubuntu-latest
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - { path: "packages/java/capnweb", group: "do.capnweb", artifact: "capnweb" }
+          - { path: "packages/java/rpc", group: "do.rpc", artifact: "rpc" }
+          - { path: "packages/java/dotdo", group: "dev.dotdo", artifact: "dotdo" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Check if version exists
+        id: check
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          GROUP_PATH=$(echo "${{ matrix.package.group }}" | tr '.' '/')
+          URL="https://repo1.maven.org/maven2/${GROUP_PATH}/${{ matrix.package.artifact }}/${VERSION}/${{ matrix.package.artifact }}-${VERSION}.pom"
+          if curl -sf "$URL" >/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          sed -i "s/^version=.*/version=${VERSION}/" gradle.properties
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          chmod +x gradlew 2>/dev/null || true
+          ./gradlew publish
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.OSSRH_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.OSSRH_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_PRIVATE_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.GPG_PASSPHRASE }}
+
+  # ═══════════════════════════════════════════════════════════════
+  # Maven Central - Kotlin packages
+  # ═══════════════════════════════════════════════════════════════
+  publish-maven-kotlin:
+    runs-on: ubuntu-latest
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - { path: "packages/kotlin/capnweb", group: "do.capnweb", artifact: "capnweb-kt" }
+          - { path: "packages/kotlin/rpc", group: "do.rpc", artifact: "rpc-kt" }
+          - { path: "packages/kotlin/dotdo", group: "dev.dotdo", artifact: "dotdo-kt" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Check if version exists
+        id: check
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          GROUP_PATH=$(echo "${{ matrix.package.group }}" | tr '.' '/')
+          URL="https://repo1.maven.org/maven2/${GROUP_PATH}/${{ matrix.package.artifact }}/${VERSION}/${{ matrix.package.artifact }}-${VERSION}.pom"
+          if curl -sf "$URL" >/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          sed -i "s/^version=.*/version=${VERSION}/" gradle.properties 2>/dev/null || true
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !github.event.inputs.dry_run
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          chmod +x gradlew 2>/dev/null || true
+          ./gradlew publish
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.OSSRH_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.OSSRH_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_PRIVATE_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.GPG_PASSPHRASE }}
+
+  # ═══════════════════════════════════════════════════════════════
+  # Summary job
+  # ═══════════════════════════════════════════════════════════════
+  summary:
+    needs:
+      - publish-npm
+      - publish-pypi
+      - publish-crates
+      - publish-nuget
+      - publish-nuget-fsharp
+      - publish-rubygems
+      - publish-hex
+      - publish-pub
+      - publish-maven-java
+      - publish-maven-kotlin
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Summary
+        run: |
+          echo "## Publish Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Registry | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| npm | ${{ needs.publish-npm.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| PyPI | ${{ needs.publish-pypi.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| crates.io | ${{ needs.publish-crates.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| NuGet (C#) | ${{ needs.publish-nuget.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| NuGet (F#) | ${{ needs.publish-nuget-fsharp.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| RubyGems | ${{ needs.publish-rubygems.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Hex.pm | ${{ needs.publish-hex.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| pub.dev | ${{ needs.publish-pub.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Maven (Java) | ${{ needs.publish-maven-java.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Maven (Kotlin) | ${{ needs.publish-maven-kotlin.result }} |" >> $GITHUB_STEP_SUMMARY
