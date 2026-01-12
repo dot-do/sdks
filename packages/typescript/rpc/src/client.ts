@@ -4,7 +4,12 @@
  * Supports both real WebSocket connections and mock servers for testing.
  */
 
-import type { MockServer, RpcRequest, RpcResponse, PipelinedRequest } from '../tests/test-server.js';
+import type {
+  MockServerInterface,
+  RpcRequest,
+  RpcResponse,
+  PipelinedRequest,
+} from './types.js';
 import { RpcPromise, PipelineBuilder } from './promise.js';
 import { createProxy, CapabilityProxy } from './proxy.js';
 
@@ -56,7 +61,7 @@ export interface PipelineStep {
  */
 export class RpcClient<T> {
   private _nextRequestId = 1;
-  private _server: MockServer | null = null;
+  private _server: MockServerInterface | null = null;
   private _ws: WebSocket | null = null;
   private _url: string | null = null;
   private _pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
@@ -64,7 +69,7 @@ export class RpcClient<T> {
   private _exportedCallbacks = new Map<string, (x: number) => number>();
   private _proxy: T;
 
-  constructor(serverOrUrl: MockServer | string, _options?: ConnectOptions) {
+  constructor(serverOrUrl: MockServerInterface | string, _options?: ConnectOptions) {
     if (typeof serverOrUrl === 'string') {
       this._url = serverOrUrl;
       // Real WebSocket connection would be established here

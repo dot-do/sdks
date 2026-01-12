@@ -31,16 +31,18 @@ One round-trip. Full type safety. Pure C#.
 ## Installation
 
 ```bash
-dotnet add package CapnWeb
+dotnet add package Capnweb.Do
 ```
 
 For ASP.NET Core integration:
 
 ```bash
-dotnet add package CapnWeb.AspNetCore
+dotnet add package Capnweb.Do.AspNetCore
 ```
 
 The source generator is included automatically - no additional packages required.
+
+> **Note:** The packages are published on NuGet as `Capnweb.Do` and `Capnweb.Do.AspNetCore` following .NET naming conventions.
 
 ---
 

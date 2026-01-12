@@ -36,8 +36,8 @@ Cap'n Web embraces this. The API is synchronous. The implementation is efficient
 
 ```xml
 <dependency>
-    <groupId>com.dotdo</groupId>
-    <artifactId>capnweb</artifactId>
+    <groupId>do.capnweb</groupId>
+    <artifactId>sdk</artifactId>
     <version>1.0.0</version>
 </dependency>
 ```
@@ -46,15 +46,17 @@ Cap'n Web embraces this. The API is synchronous. The implementation is efficient
 
 ```kotlin
 // Kotlin DSL
-implementation("com.dotdo:capnweb:1.0.0")
+implementation("do.capnweb:sdk:1.0.0")
 ```
 
 ```groovy
 // Groovy DSL
-implementation 'com.dotdo:capnweb:1.0.0'
+implementation 'do.capnweb:sdk:1.0.0'
 ```
 
 **Requires Java 21 or later.**
+
+> **Note:** The package uses the reversed domain group ID `do.capnweb` following Maven conventions for the `.do` domain.
 
 ---
 

@@ -22,8 +22,10 @@ Context for cancellation. Value and error. The Go way.
 ## Installation
 
 ```bash
-go get github.com/dot-do/sdks/packages/go/capnweb
+go get go.capnweb.do
 ```
+
+> **Note:** The package uses vanity imports via the `go.capnweb.do` domain. This redirects to the GitHub repository.
 
 ## Quick Start
 
@@ -36,7 +38,7 @@ import (
     "log"
     "os"
 
-    "github.com/dot-do/sdks/packages/go/capnweb"
+    "go.capnweb.do"
 )
 
 // Define your API as a Go interface
@@ -760,7 +762,7 @@ import (
     "syscall"
     "time"
 
-    "github.com/dot-do/sdks/packages/go/capnweb"
+    "go.capnweb.do"
 )
 
 // Remote API contracts

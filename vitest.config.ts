@@ -15,7 +15,18 @@ export default defineConfig({
       {
         test: {
           name: 'node',
-          include: ['__tests__/index.test.ts', '__tests__/cors.test.ts'],
+          include: [
+            '__tests__/index.test.ts',
+            '__tests__/cors.test.ts',
+            '__tests__/error-handling.test.ts',
+            '__tests__/serialize.test.ts',
+            '__tests__/rpc.test.ts',
+            '__tests__/websocket.test.ts',
+            '__tests__/batch.test.ts',
+            '__tests__/messageport.test.ts',
+            '__tests__/map.test.ts',
+            '__tests__/edge-cases.test.ts',
+          ],
           environment: 'node',
         },
       },

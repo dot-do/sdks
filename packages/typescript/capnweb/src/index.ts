@@ -279,6 +279,51 @@ export class MessageBuilder {
 }
 
 // ============================================================================
+// Standard Error Codes
+// ============================================================================
+
+/**
+ * Standard error codes used across all DotDo SDK implementations.
+ * These codes are consistent across TypeScript, Python, Rust, and Go.
+ *
+ * Error Code Ranges:
+ * - 1xxx: Connection errors
+ * - 2xxx: RPC errors
+ * - 3xxx: Timeout errors
+ * - 4xxx: Capability errors
+ * - 5xxx: Serialization errors
+ */
+export const ErrorCode = {
+  /** Connection-related errors (network, transport) */
+  CONNECTION_ERROR: 1001,
+
+  /** RPC method call failures */
+  RPC_ERROR: 2001,
+
+  /** Request timeout exceeded */
+  TIMEOUT_ERROR: 3001,
+
+  /** Capability resolution or access errors */
+  CAPABILITY_ERROR: 4001,
+
+  /** Serialization/deserialization errors */
+  SERIALIZATION_ERROR: 5001,
+} as const;
+
+export type ErrorCodeType = (typeof ErrorCode)[keyof typeof ErrorCode];
+
+/**
+ * Maps error codes to their string names
+ */
+export const ErrorCodeName: Record<ErrorCodeType, string> = {
+  [ErrorCode.CONNECTION_ERROR]: 'CONNECTION_ERROR',
+  [ErrorCode.RPC_ERROR]: 'RPC_ERROR',
+  [ErrorCode.TIMEOUT_ERROR]: 'TIMEOUT_ERROR',
+  [ErrorCode.CAPABILITY_ERROR]: 'CAPABILITY_ERROR',
+  [ErrorCode.SERIALIZATION_ERROR]: 'SERIALIZATION_ERROR',
+};
+
+// ============================================================================
 // Error Types
 // ============================================================================
 
@@ -294,6 +339,7 @@ export class MessageBuilder {
  *   - RpcError: Method call failures, server errors
  *   - CapabilityError: Capability resolution failures
  *   - TimeoutError: Request timeout exceeded
+ *   - SerializationError: Encoding/decoding failures
  *
  * @example
  * ```typescript
@@ -310,16 +356,35 @@ export class CapnwebError extends Error {
   /**
    * Creates a new CapnwebError.
    * @param message - Human-readable error message
-   * @param code - Machine-readable error code (e.g., 'CONNECTION_ERROR', 'RPC_ERROR')
+   * @param code - Numeric error code (e.g., 1001, 2001)
+   * @param codeName - String name of the error code (e.g., 'CONNECTION_ERROR')
    */
-  constructor(message: string, public readonly code: string) {
+  constructor(
+    message: string,
+    public readonly code: ErrorCodeType,
+    public readonly codeName: string
+  ) {
     super(message);
     this.name = 'CapnwebError';
+  }
+
+  /**
+   * Returns a JSON representation of the error.
+   */
+  toJSON(): { name: string; message: string; code: number; codeName: string } {
+    return {
+      name: this.name,
+      message: this.message,
+      code: this.code,
+      codeName: this.codeName,
+    };
   }
 }
 
 /**
  * Error thrown when a connection cannot be established or is unexpectedly lost.
+ *
+ * Error Code: 1001 (CONNECTION_ERROR)
  *
  * Common causes:
  * - Network unreachable or server down
@@ -345,13 +410,15 @@ export class ConnectionError extends CapnwebError {
    * @param message - Description of the connection failure
    */
   constructor(message: string) {
-    super(message, 'CONNECTION_ERROR');
+    super(message, ErrorCode.CONNECTION_ERROR, 'CONNECTION_ERROR');
     this.name = 'ConnectionError';
   }
 }
 
 /**
  * Error thrown when an RPC method call fails.
+ *
+ * Error Code: 2001 (RPC_ERROR)
  *
  * Common causes:
  * - Method not found on the remote server
@@ -379,14 +446,57 @@ export class RpcError extends CapnwebError {
    * @param message - Description of the RPC failure
    * @param methodId - Optional method ID that failed (for debugging)
    */
-  constructor(message: string, public readonly methodId?: number) {
-    super(message, 'RPC_ERROR');
+  constructor(
+    message: string,
+    public readonly methodId?: number
+  ) {
+    super(message, ErrorCode.RPC_ERROR, 'RPC_ERROR');
     this.name = 'RpcError';
   }
 }
 
 /**
+ * Error thrown when an operation exceeds its timeout.
+ *
+ * Error Code: 3001 (TIMEOUT_ERROR)
+ *
+ * Common causes:
+ * - Server is slow or overloaded
+ * - Network latency issues
+ * - Method taking longer than expected to complete
+ * - Deadlock or infinite loop on the server
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   await client.call('longRunningOperation', { timeout: 5000 });
+ * } catch (error) {
+ *   if (error instanceof TimeoutError) {
+ *     console.log('Operation timed out:', error.message);
+ *     // Consider retrying with a longer timeout
+ *   }
+ * }
+ * ```
+ */
+export class TimeoutError extends CapnwebError {
+  /**
+   * Creates a new TimeoutError.
+   * @param message - Description of what timed out (default: 'Request timed out')
+   * @param timeoutMs - The timeout duration in milliseconds
+   */
+  constructor(
+    message: string = 'Request timed out',
+    public readonly timeoutMs?: number
+  ) {
+    super(message, ErrorCode.TIMEOUT_ERROR, 'TIMEOUT_ERROR');
+    this.name = 'TimeoutError';
+  }
+}
+
+/**
  * Error thrown when a capability cannot be resolved or is invalid.
+ *
+ * Error Code: 4001 (CAPABILITY_ERROR)
  *
  * Common causes:
  * - Capability reference expired or was garbage collected
@@ -415,40 +525,118 @@ export class CapabilityError extends CapnwebError {
    * @param message - Description of the capability error
    * @param capabilityId - Optional ID of the capability that caused the error
    */
-  constructor(message: string, public readonly capabilityId?: CapabilityId) {
-    super(message, 'CAPABILITY_ERROR');
+  constructor(
+    message: string,
+    public readonly capabilityId?: CapabilityId
+  ) {
+    super(message, ErrorCode.CAPABILITY_ERROR, 'CAPABILITY_ERROR');
     this.name = 'CapabilityError';
   }
 }
 
 /**
- * Error thrown when an operation exceeds its timeout.
+ * Error thrown when serialization or deserialization fails.
+ *
+ * Error Code: 5001 (SERIALIZATION_ERROR)
  *
  * Common causes:
- * - Server is slow or overloaded
- * - Network latency issues
- * - Method taking longer than expected to complete
- * - Deadlock or infinite loop on the server
+ * - Invalid data format
+ * - Schema mismatch between client and server
+ * - Corrupted message data
+ * - Unsupported data types
  *
  * @example
  * ```typescript
  * try {
- *   await client.call('longRunningOperation', { timeout: 5000 });
+ *   await client.call('processData', complexObject);
  * } catch (error) {
- *   if (error instanceof TimeoutError) {
- *     console.log('Operation timed out:', error.message);
- *     // Consider retrying with a longer timeout
+ *   if (error instanceof SerializationError) {
+ *     console.log('Serialization failed:', error.message);
  *   }
  * }
  * ```
  */
-export class TimeoutError extends CapnwebError {
+export class SerializationError extends CapnwebError {
   /**
-   * Creates a new TimeoutError.
-   * @param message - Description of what timed out (default: 'Request timed out')
+   * Creates a new SerializationError.
+   * @param message - Description of the serialization failure
+   * @param isDeserialize - Whether this was a deserialization (vs serialization) error
    */
-  constructor(message: string = 'Request timed out') {
-    super(message, 'TIMEOUT_ERROR');
-    this.name = 'TimeoutError';
+  constructor(
+    message: string,
+    public readonly isDeserialize: boolean = false
+  ) {
+    super(message, ErrorCode.SERIALIZATION_ERROR, 'SERIALIZATION_ERROR');
+    this.name = 'SerializationError';
   }
+}
+
+// ============================================================================
+// Error Utilities
+// ============================================================================
+
+/**
+ * Checks if an error is a CapnwebError with a specific error code.
+ *
+ * @param error - The error to check
+ * @param code - The error code to match
+ * @returns true if the error matches the code
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   await client.call('method');
+ * } catch (error) {
+ *   if (isErrorCode(error, ErrorCode.TIMEOUT_ERROR)) {
+ *     // Handle timeout specifically
+ *   }
+ * }
+ * ```
+ */
+export function isErrorCode(error: unknown, code: ErrorCodeType): boolean {
+  return error instanceof CapnwebError && error.code === code;
+}
+
+/**
+ * Creates an appropriate CapnwebError subclass from an error code and message.
+ *
+ * @param code - The error code
+ * @param message - The error message
+ * @returns An instance of the appropriate error class
+ */
+export function createError(code: ErrorCodeType, message: string): CapnwebError {
+  switch (code) {
+    case ErrorCode.CONNECTION_ERROR:
+      return new ConnectionError(message);
+    case ErrorCode.RPC_ERROR:
+      return new RpcError(message);
+    case ErrorCode.TIMEOUT_ERROR:
+      return new TimeoutError(message);
+    case ErrorCode.CAPABILITY_ERROR:
+      return new CapabilityError(message);
+    case ErrorCode.SERIALIZATION_ERROR:
+      return new SerializationError(message);
+    default:
+      return new CapnwebError(message, code, ErrorCodeName[code] || 'UNKNOWN_ERROR');
+  }
+}
+
+/**
+ * Wraps an unknown error into a CapnwebError.
+ *
+ * @param error - Any error or thrown value
+ * @param defaultCode - The default error code if not a CapnwebError
+ * @returns A CapnwebError instance
+ */
+export function wrapError(
+  error: unknown,
+  defaultCode: ErrorCodeType = ErrorCode.RPC_ERROR
+): CapnwebError {
+  if (error instanceof CapnwebError) {
+    return error;
+  }
+  if (error instanceof Error) {
+    return createError(defaultCode, error.message);
+  }
+  return createError(defaultCode, String(error));
 }

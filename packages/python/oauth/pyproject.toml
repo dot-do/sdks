@@ -27,6 +27,8 @@ classifiers = [
 ]
 keywords = ["oauth", "dotdo", "authentication", "cli", "keyring", "token"]
 dependencies = [
+    "rpc-do>=0.1.0",
+    "platform-do>=0.1.0",
     "keyring>=24.0.0",
     "httpx>=0.26.0",
     "click>=8.0.0",

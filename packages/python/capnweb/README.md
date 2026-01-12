@@ -29,10 +29,12 @@ profile = await api.authenticate(token).user.profile
 ## Installation
 
 ```bash
-pip install capnweb
+pip install capnweb-do
 ```
 
 Requires Python 3.10+.
+
+> **Note:** The package is published as `capnweb-do` on PyPI (since PyPI doesn't allow dots in package names). After installation, import it as `capnweb`.
 
 ---
 

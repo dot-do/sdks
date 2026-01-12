@@ -4,8 +4,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>OAuthDo</RootNamespace>
-    <PackageId>OAuthDo</PackageId>
+    <RootNamespace>OAuth.Do</RootNamespace>
+    <PackageId>OAuth.Do</PackageId>
     <Version>0.1.0</Version>
     <Authors>Drivly</Authors>
     <Description>Device flow OAuth SDK for the .do platform</Description>

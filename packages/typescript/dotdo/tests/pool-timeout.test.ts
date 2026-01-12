@@ -48,7 +48,7 @@ describe('Connection Pool Acquire Timeout', () => {
     it('should timeout when all connections are in use and pool is full', async () => {
       // This test verifies that PoolTimeoutError is correctly constructed
       // and has the expected properties
-      const { PoolTimeoutError } = await import('../src/index.js');
+      const { PoolTimeoutError, PoolErrorCode } = await import('../src/index.js');
 
       const url = 'http://localhost:9999/test';
       const timeout = 100;
@@ -64,7 +64,8 @@ describe('Connection Pool Acquire Timeout', () => {
       expect(error.timeout).toBe(timeout);
       expect(error.message).toContain('timeout');
       expect(error.message).toContain(url);
-      expect(error.code).toBe('POOL_TIMEOUT_ERROR');
+      expect(error.code).toBe(PoolErrorCode.POOL_TIMEOUT_ERROR);
+      expect(error.codeName).toBe('POOL_TIMEOUT_ERROR');
     });
 
     it('should throw PoolTimeoutError with descriptive message', async () => {
@@ -215,6 +216,13 @@ describe('PoolTimeoutError', () => {
 
     const error = new PoolTimeoutError('test timeout', 'http://test.do', 5000);
     expect(error).toBeInstanceOf(Error);
+  });
+
+  it('should extend CapnwebError', async () => {
+    const { PoolTimeoutError, CapnwebError } = await import('../src/index.js');
+
+    const error = new PoolTimeoutError('test timeout', 'http://test.do', 5000);
+    expect(error).toBeInstanceOf(CapnwebError);
   });
 
   it('should have url and timeout properties', async () => {

@@ -17,6 +17,9 @@ default = ["tokio-runtime"]
 tokio-runtime = []
 
 [dependencies]
+# Core capability-based RPC
+capnweb-do = { path = "../capnweb" }
+
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
 

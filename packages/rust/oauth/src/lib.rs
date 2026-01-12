@@ -63,6 +63,7 @@
 pub mod auth;
 pub mod config;
 pub mod device;
+pub mod rpc;
 pub mod storage;
 pub mod types;
 
@@ -70,6 +71,14 @@ pub mod types;
 pub use auth::{get_token, get_user, is_authenticated, logout, refresh_access_token};
 pub use config::{configure, get_config};
 pub use device::{authorize_device, poll_for_tokens, DeviceAuthOptions};
+pub use rpc::{
+    // Platform-do based (managed connections)
+    create_authenticated_client, create_auth_factory, AuthenticatedRpcClient,
+    AuthenticatedRpcError, AuthenticatedRpcOptions,
+    // Direct rpc-do access
+    create_direct_rpc_client, create_authenticated_rpc_session,
+    DirectRpcOptions, AuthenticatedRpcSession, DirectRpcClient,
+};
 pub use storage::{
     create_secure_storage, FileStorage, KeyringStorage, MemoryStorage, SecureStorage, TokenStorage,
 };
@@ -77,3 +86,9 @@ pub use types::{
     AuthResult, DeviceAuthorizationResponse, OAuthConfig, OAuthError, OAuthProvider, StoredTokenData,
     TokenError, TokenResponse, User,
 };
+
+// Re-export platform-do for convenience
+pub use platform_do::{Auth, DotDo, DotDoBuilder, DotDoError, RetryPolicy};
+
+// Re-export rpc-do for direct RPC access
+pub use rpc_do::RpcClient;

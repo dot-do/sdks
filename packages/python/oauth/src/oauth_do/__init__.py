@@ -99,6 +99,21 @@ from .auth import (
     AuthProvider,
 )
 
+# Authenticated RPC support (integrates with platform-do and rpc-do)
+from .rpc import (
+    # Platform-do based (managed connections)
+    AuthenticatedRpcClient,
+    AuthenticatedRpcOptions,
+    connect_authenticated,
+    create_auth_factory,
+    create_authenticated_client,
+    # Direct rpc-do access
+    DirectRpcOptions,
+    AuthenticatedRpcSession,
+    create_direct_rpc_client,
+    create_authenticated_rpc_session,
+)
+
 __all__ = [
     # Version
     "__version__",
@@ -141,4 +156,15 @@ __all__ = [
     "refresh_access_token",
     "store_token_data",
     "AuthProvider",
+    # Authenticated RPC (platform-do based)
+    "AuthenticatedRpcClient",
+    "AuthenticatedRpcOptions",
+    "connect_authenticated",
+    "create_auth_factory",
+    "create_authenticated_client",
+    # Direct RPC access (rpc-do based)
+    "DirectRpcOptions",
+    "AuthenticatedRpcSession",
+    "create_direct_rpc_client",
+    "create_authenticated_rpc_session",
 ]

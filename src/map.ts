@@ -164,8 +164,15 @@ mapImpl.sendMap = (hook: StubHook, path: PropertyPath, func: (promise: RpcPromis
   // Detect misuse: Map callbacks cannot be async.
   if (result instanceof Promise) {
     // Squelch unhandled rejections from the map function itself -- it'll probably just throw
-    // something about pulling a MapVariableHook.
-    result.catch(err => {});
+    // something about pulling a MapVariableHook. We attach a catch handler to prevent the
+    // runtime from treating this as an unhandled rejection, but we don't actually need to do
+    // anything with the error since we're about to throw a more understandable error below.
+    // Note: The error is still being thrown synchronously, it's just that the Promise rejection
+    // would otherwise cause a separate "unhandled rejection" warning in the runtime.
+    result.catch(() => {
+      // Intentionally empty - we're throwing a better error synchronously below.
+      // This catch prevents unhandled rejection warnings without suppressing the actual error.
+    });
 
     // Throw an understandable error.
     throw new Error("RPC map() callbacks cannot be async.");

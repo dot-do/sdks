@@ -38,12 +38,12 @@ The entire chain becomes a single `["push", ...]` message. The server evaluates 
 
 ## Installation
 
-Add `capnweb` to your dependencies in `mix.exs`:
+Add `capnweb_do` to your dependencies in `mix.exs`:
 
 ```elixir
 def deps do
   [
-    {:capnweb, "~> 1.0"}
+    {:capnweb_do, "~> 1.0"}
   ]
 end
 ```
@@ -53,6 +53,8 @@ Then fetch dependencies:
 ```bash
 mix deps.get
 ```
+
+> **Note:** The package is published as `capnweb_do` on Hex.pm (using underscore instead of dot). After installation, use it as `CapnWeb`.
 
 ---
 

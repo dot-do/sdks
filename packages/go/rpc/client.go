@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"nhooyr.io/websocket"
 )
 
 // ErrNotConnected is returned when an operation requires an active connection.
@@ -43,7 +43,7 @@ type Option func(*clientConfig)
 type clientConfig struct {
 	timeout        time.Duration
 	headers        http.Header
-	dialer         *websocket.Dialer
+	dialOptions    *websocket.DialOptions
 	reconnect      bool
 	maxReconnects  int
 	reconnectDelay time.Duration
@@ -63,10 +63,10 @@ func WithHeaders(headers http.Header) Option {
 	}
 }
 
-// WithDialer sets a custom WebSocket dialer.
-func WithDialer(d *websocket.Dialer) Option {
+// WithDialOptions sets custom dial options for nhooyr.io/websocket.
+func WithDialOptions(opts *websocket.DialOptions) Option {
 	return func(c *clientConfig) {
-		c.dialer = d
+		c.dialOptions = opts
 	}
 }
 
@@ -108,14 +108,14 @@ type pendingRequest struct {
 
 // rpcMessage is the wire format for RPC messages.
 type rpcMessage struct {
-	ID      uint64 `json:"id,omitempty"`
-	Type    string `json:"type"`
-	Method  string `json:"method,omitempty"`
-	Target  string `json:"target,omitempty"`
-	Args    []any  `json:"args,omitempty"`
-	Result  any    `json:"result,omitempty"`
+	ID      uint64    `json:"id,omitempty"`
+	Type    string    `json:"type"`
+	Method  string    `json:"method,omitempty"`
+	Target  string    `json:"target,omitempty"`
+	Args    []any     `json:"args,omitempty"`
+	Result  any       `json:"result,omitempty"`
 	Error   *RPCError `json:"error,omitempty"`
-	CapID   string `json:"capId,omitempty"`
+	CapID   string    `json:"capId,omitempty"`
 }
 
 // Connect establishes a WebSocket connection to the RPC server.
@@ -149,10 +149,6 @@ func ConnectContext(ctx context.Context, service string, opts ...Option) (*Clien
 		opt(&config)
 	}
 
-	if config.dialer == nil {
-		config.dialer = websocket.DefaultDialer
-	}
-
 	// Create client
 	clientCtx, cancel := context.WithCancel(ctx)
 	client := &Client{
@@ -166,8 +162,15 @@ func ConnectContext(ctx context.Context, service string, opts ...Option) (*Clien
 	}
 	client.selfRef = client
 
-	// Connect
-	if err := client.connect(); err != nil {
+	// Connect with timeout
+	dialCtx := clientCtx
+	if config.timeout > 0 {
+		var dialCancel context.CancelFunc
+		dialCtx, dialCancel = context.WithTimeout(clientCtx, config.timeout)
+		defer dialCancel()
+	}
+
+	if err := client.connect(dialCtx); err != nil {
 		cancel()
 		return nil, err
 	}
@@ -204,8 +207,16 @@ func normalizeURL(service string) (string, error) {
 }
 
 // connect establishes the WebSocket connection.
-func (c *Client) connect() error {
-	conn, _, err := c.config.dialer.DialContext(c.ctx, c.url, c.config.headers)
+func (c *Client) connect(ctx context.Context) error {
+	dialOpts := c.config.dialOptions
+	if dialOpts == nil {
+		dialOpts = &websocket.DialOptions{}
+	}
+	if c.config.headers != nil {
+		dialOpts.HTTPHeader = c.config.headers
+	}
+
+	conn, _, err := websocket.Dial(ctx, c.url, dialOpts)
 	if err != nil {
 		return fmt.Errorf("dial failed: %w", err)
 	}
@@ -233,9 +244,11 @@ func (c *Client) receiveLoop() {
 		default:
 		}
 
-		_, data, err := c.conn.ReadMessage()
+		_, data, err := c.conn.Read(c.ctx)
 		if err != nil {
-			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+			closeStatus := websocket.CloseStatus(err)
+			if closeStatus == websocket.StatusNormalClosure ||
+				closeStatus == websocket.StatusGoingAway {
 				return
 			}
 			if c.config.reconnect && !c.closed {
@@ -354,9 +367,12 @@ func (c *Client) tryReconnect() {
 		case <-time.After(delay):
 		}
 
-		if err := c.connect(); err == nil {
+		reconnectCtx, cancel := context.WithTimeout(c.ctx, c.config.timeout)
+		if err := c.connect(reconnectCtx); err == nil {
+			cancel()
 			return
 		}
+		cancel()
 		delay *= 2
 	}
 }
@@ -378,7 +394,7 @@ func (c *Client) sendMessage(msg rpcMessage) error {
 	}
 
 	c.mu.Lock()
-	err = conn.WriteMessage(websocket.TextMessage, data)
+	err = conn.Write(c.ctx, websocket.MessageText, data)
 	c.mu.Unlock()
 
 	if err != nil {
@@ -533,7 +549,7 @@ func (c *Client) Close() error {
 	c.pendingMu.Unlock()
 
 	if conn != nil {
-		return conn.Close()
+		return conn.Close(websocket.StatusNormalClosure, "client closed")
 	}
 	return nil
 }

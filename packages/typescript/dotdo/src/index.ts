@@ -7,6 +7,7 @@ import {
   connect as rpcConnect,
   RpcClient,
   TimeoutError,
+  CapnwebError,
   type ConnectOptions,
 } from 'rpc.do';
 
@@ -428,7 +429,7 @@ const DEFAULT_RETRY_OPTIONS: InternalRetryOptions = {
 /**
  * Calculate delay for retry attempt using exponential backoff with jitter
  */
-function calculateRetryDelay(attempt: number, options: Required<RetryOptions>): number {
+function calculateRetryDelay(attempt: number, options: InternalRetryOptions): number {
   const exponentialDelay = options.baseDelay * Math.pow(options.backoffMultiplier, attempt);
   const cappedDelay = Math.min(exponentialDelay, options.maxDelay);
   // Add jitter (0-25% of delay)
@@ -439,7 +440,7 @@ function calculateRetryDelay(attempt: number, options: Required<RetryOptions>): 
 /**
  * Check if an error is retryable
  */
-function isRetryableError(error: unknown, options: Required<RetryOptions>): boolean {
+function isRetryableError(error: unknown, options: InternalRetryOptions): boolean {
   if (error instanceof Error) {
     const code = (error as Error & { code?: string }).code;
     if (code && options.retryableErrors.includes(code)) {
@@ -541,7 +542,7 @@ async function withRetry<T>(
 export class DotDo {
   private readonly options: DotDoOptions;
   private readonly pool: ConnectionPool;
-  private readonly retryOptions: Required<RetryOptions>;
+  private readonly retryOptions: InternalRetryOptions;
   private cleanupInterval?: ReturnType<typeof setInterval>;
 
   constructor(options: DotDoOptions = {}) {
@@ -744,24 +745,44 @@ export {
   RpcError,
   CapabilityError,
   TimeoutError,
+  SerializationError,
+  // Error codes and utilities
+  ErrorCode,
+  ErrorCodeName,
+  isErrorCode,
+  createError,
+  wrapError,
 } from 'rpc.do';
+export type { ErrorCodeType } from 'rpc.do';
 
 // ============================================================================
 // Pool-specific Error Types
 // ============================================================================
 
 /**
- * Error thrown when acquiring a connection from the pool times out
+ * Pool-specific error code (extends the base error code ranges)
+ * Uses 6xxx range for pool-related errors
  */
-export class PoolTimeoutError extends Error {
-  public readonly code = 'POOL_TIMEOUT_ERROR';
+export const PoolErrorCode = {
+  /** Pool acquisition timeout */
+  POOL_TIMEOUT_ERROR: 6001,
+} as const;
 
+export type PoolErrorCodeType = (typeof PoolErrorCode)[keyof typeof PoolErrorCode];
+
+/**
+ * Error thrown when acquiring a connection from the pool times out
+ *
+ * Error Code: 6001 (POOL_TIMEOUT_ERROR)
+ */
+export class PoolTimeoutError extends CapnwebError {
   constructor(
     message: string,
     public readonly url: string,
     public readonly timeout: number
   ) {
-    super(message);
+    // Use type assertion since we're extending the error code range
+    super(message, PoolErrorCode.POOL_TIMEOUT_ERROR as any, 'POOL_TIMEOUT_ERROR');
     this.name = 'PoolTimeoutError';
     // Ensure proper prototype chain for instanceof checks
     Object.setPrototypeOf(this, PoolTimeoutError.prototype);

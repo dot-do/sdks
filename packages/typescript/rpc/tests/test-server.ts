@@ -3,6 +3,18 @@
  * This runs in the same process for testing purposes
  */
 
+import type {
+  MockServerInterface,
+  RpcRequest,
+  RpcResponse,
+  RpcMapRequest,
+  PipelinedRequest,
+  PipelineOp,
+} from '../src/types.js';
+
+// Re-export the types for backward compatibility with tests that import from here
+export type { RpcRequest, RpcResponse, RpcMapRequest, PipelinedRequest, PipelineOp };
+
 export interface Counter {
   value(): number;
   increment(by: number): number;
@@ -95,55 +107,47 @@ export function createTestTarget(): TestTarget {
 }
 
 /**
- * Message types for RPC protocol
+ * Wrap a capability in a proxy that auto-calls zero-arg methods when accessed as properties.
+ * This matches Cap'n Web semantics where property access on capabilities is a method call.
+ *
+ * For expressions like `counter => counter.value`:
+ * - If `value` is a zero-arg method, accessing it as a property auto-calls it
+ * - If `value` is a method with args (like `increment`), returns a callable function
  */
-export interface RpcRequest {
-  id: number;
-  method: string;
-  target?: number;  // Capability ID, 0 = bootstrap
-  args: unknown[];
-  pipeline?: PipelineOp[];
-}
+function wrapCapabilityForMap(cap: unknown): unknown {
+  if (cap === null || cap === undefined || typeof cap !== 'object') {
+    return cap;
+  }
 
-export interface PipelineOp {
-  type: 'call' | 'get';
-  method?: string;
-  args?: unknown[];
-  property?: string;
-}
+  // Check if this looks like a capability (has methods)
+  const hasMethod = Object.values(cap as Record<string, unknown>).some(v => typeof v === 'function');
+  if (!hasMethod) {
+    return cap;
+  }
 
-export interface RpcResponse {
-  id: number;
-  result?: unknown;
-  error?: { type: string; message: string };
-  capabilityId?: number;  // If result is a capability
-}
-
-export interface RpcMapRequest {
-  id: number;
-  target: number;  // Capability ID that returns array/value
-  expression: string;
-  captures: Record<string, number>;  // Variable name -> capability ID
-}
-
-/**
- * Extended request for pipelined calls
- */
-export interface PipelinedRequest {
-  id: number;
-  steps: Array<{
-    method: string;
-    target?: number | string;  // Capability ID or reference to previous step result
-    args: unknown[];
-    as?: string;
-  }>;
+  return new Proxy(cap as object, {
+    get(target, prop) {
+      const value = (target as Record<string | symbol, unknown>)[prop];
+      if (typeof value === 'function') {
+        const fn = value as Function;
+        // Check if this is a zero-arg method by checking the function length
+        if (fn.length === 0) {
+          // Auto-call zero-arg methods when accessed as properties
+          return fn.call(target);
+        }
+        // For methods with args, return a bound function
+        return fn.bind(target);
+      }
+      return value;
+    },
+  });
 }
 
 /**
  * Mock server that processes RPC messages
  * Used for testing without network
  */
-export class MockServer {
+export class MockServer implements MockServerInterface {
   private nextCapId = 1;
   private capabilities = new Map<number, unknown>();
   private roundTrips = 0;
@@ -395,7 +399,24 @@ export class MockServer {
       }
 
       if (Array.isArray(value)) {
-        const results = value.map(item => fn(...Object.values(captures), item));
+        // Resolve capability references in array items before mapping
+        // Wrap capabilities in proxies for auto-calling zero-arg methods
+        const resolvedItems = value.map(item => {
+          if (item !== null && typeof item === 'object') {
+            const obj = item as Record<string, unknown>;
+            if ('__capabilityId' in obj) {
+              const cap = this.capabilities.get(obj.__capabilityId as number);
+              return wrapCapabilityForMap(cap);
+            }
+            if ('$ref' in obj) {
+              const cap = this.capabilities.get(obj.$ref as number);
+              return wrapCapabilityForMap(cap);
+            }
+          }
+          // Also wrap non-reference capabilities
+          return wrapCapabilityForMap(item);
+        });
+        const results = resolvedItems.map(item => fn(...Object.values(captures), item));
         // Check if results contain capabilities
         const processedResults = results.map(r => {
           if (r !== null && typeof r === 'object' && !Array.isArray(r)) {
@@ -623,7 +644,24 @@ export class MockServer {
       }
 
       if (Array.isArray(value)) {
-        const results = value.map(item => fn(...Object.values(captureValues), item));
+        // Resolve capability references in array items before mapping
+        // Wrap capabilities in proxies for auto-calling zero-arg methods
+        const resolvedItems = value.map(item => {
+          if (item !== null && typeof item === 'object') {
+            const obj = item as Record<string, unknown>;
+            if ('__capabilityId' in obj) {
+              const cap = this.capabilities.get(obj.__capabilityId as number);
+              return wrapCapabilityForMap(cap);
+            }
+            if ('$ref' in obj) {
+              const cap = this.capabilities.get(obj.$ref as number);
+              return wrapCapabilityForMap(cap);
+            }
+          }
+          // Also wrap non-reference capabilities
+          return wrapCapabilityForMap(item);
+        });
+        const results = resolvedItems.map(item => fn(...Object.values(captureValues), item));
         const processedResults = results.map(r => {
           if (r !== null && typeof r === 'object' && !Array.isArray(r)) {
             const hasMethod = Object.values(r).some(v => typeof v === 'function');

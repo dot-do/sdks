@@ -35,12 +35,25 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use thiserror::Error;
 
+// Standardized error codes module
+pub mod errors;
+
+// Re-export standardized error types
+pub use errors::{
+    CapabilityError, CapnwebError, ConnectionError, ErrorCode, RpcError as StdRpcError,
+    SerializationError, TimeoutError, create_error, is_error_code,
+};
+
 // Re-export common dependencies
 pub use serde;
 pub use serde_json;
 
 /// Prelude module for common imports.
 pub mod prelude {
+    pub use super::errors::{
+        CapabilityError, CapnwebError, ConnectionError, ErrorCode, RpcError as StdRpcError,
+        SerializationError, TimeoutError,
+    };
     pub use super::{connect, Error, Promise, Result, RpcError};
     pub use serde::{Deserialize, Serialize};
 }

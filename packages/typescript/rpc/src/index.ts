@@ -65,9 +65,19 @@ export type {
   MapOptions,
 } from './map.js';
 
+// Protocol types (for implementing mock servers or custom transports)
+export type {
+  MockServerInterface,
+  RpcRequest,
+  RpcResponse,
+  RpcMapRequest,
+  PipelinedRequest,
+  PipelineOp as ProtocolPipelineOp,
+} from './types.js';
+
 // Import for the connect function
 import { RpcClient, ConnectOptions } from './client.js';
-import type { MockServer } from '../tests/test-server.js';
+import type { MockServerInterface } from './types.js';
 
 /**
  * Connect to an RPC service
@@ -92,7 +102,7 @@ import type { MockServer } from '../tests/test-server.js';
  * ```
  */
 export function connect<T = unknown>(
-  serverOrUrl: MockServer | string,
+  serverOrUrl: MockServerInterface | string,
   options?: ConnectOptions
 ): RpcClient<T> {
   return new RpcClient<T>(serverOrUrl, options);
@@ -141,13 +151,23 @@ export type ServiceInterface<T> = {
  *   - RpcError - Method call failures
  *   - CapabilityError - Capability resolution failures
  *   - TimeoutError - Request timeout
+ *   - SerializationError - Encoding/decoding failures
  *
  * @see {@link CapnwebError} for catching all RPC-related errors
  */
 export {
+  // Error classes
   CapnwebError,
   ConnectionError,
   RpcError,
   CapabilityError,
   TimeoutError,
+  SerializationError,
+  // Error codes and utilities
+  ErrorCode,
+  ErrorCodeName,
+  isErrorCode,
+  createError,
+  wrapError,
 } from '@dotdo/capnweb';
+export type { ErrorCodeType } from '@dotdo/capnweb';

@@ -65,7 +65,9 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "open": "^10.1.0"
+    "open": "^10.1.0",
+    "rpc.do": "workspace:*",
+    "platform.do": "workspace:*"
   },
   "optionalDependencies": {
     "keytar": "^7.9.0"

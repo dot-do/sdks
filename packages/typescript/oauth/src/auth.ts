@@ -2,6 +2,21 @@ import { getConfig } from './config.js'
 import type { User, AuthResult, TokenResponse, StoredTokenData } from './types.js'
 
 /**
+ * Cloudflare Secrets Store binding interface
+ * @see https://developers.cloudflare.com/workers/configuration/secrets/#secrets-store
+ */
+interface SecretsStoreBinding {
+	get(): Promise<string>
+}
+
+/**
+ * Check if value is a Cloudflare Secrets Store binding
+ */
+function isSecretsStoreBinding(value: unknown): value is SecretsStoreBinding {
+	return typeof value === 'object' && value !== null && typeof (value as SecretsStoreBinding).get === 'function'
+}
+
+/**
  * Resolve a secret that could be a plain string or a secrets store binding
  * Secrets store bindings have a .get() method that returns a Promise<string>
  * @see https://developers.cloudflare.com/workers/configuration/secrets/#secrets-store
@@ -9,8 +24,8 @@ import type { User, AuthResult, TokenResponse, StoredTokenData } from './types.j
 async function resolveSecret(value: unknown): Promise<string | null> {
 	if (!value) return null
 	if (typeof value === 'string') return value
-	if (typeof value === 'object' && typeof (value as any).get === 'function') {
-		return await (value as any).get()
+	if (isSecretsStoreBinding(value)) {
+		return await value.get()
 	}
 	return null
 }
@@ -20,7 +35,8 @@ async function resolveSecret(value: unknown): Promise<string | null> {
  */
 function getEnv(key: string): string | undefined {
 	// Check globalThis first (Workers)
-	if ((globalThis as any)[key]) return (globalThis as any)[key]
+	const globalAny = globalThis as Record<string, unknown>
+	if (typeof globalAny[key] === 'string') return globalAny[key]
 	// Check process.env (Node.js)
 	if (typeof process !== 'undefined' && process.env?.[key]) return process.env[key]
 	return undefined
@@ -75,7 +91,7 @@ export async function getUser(token?: string): Promise<AuthResult> {
 export async function login(credentials: {
 	email?: string
 	password?: string
-	[key: string]: any
+	[key: string]: unknown
 }): Promise<AuthResult> {
 	const config = getConfig()
 
@@ -166,10 +182,11 @@ export async function getToken(): Promise<string | null> {
 		// @ts-ignore - cloudflare:workers only available in Workers runtime
 		const { env } = await import('cloudflare:workers')
 
-		const cfAdminToken = await resolveSecret((env as any).DO_ADMIN_TOKEN)
+		const cfEnv = env as Record<string, unknown>
+		const cfAdminToken = await resolveSecret(cfEnv.DO_ADMIN_TOKEN)
 		if (cfAdminToken) return cfAdminToken
 
-		const cfToken = await resolveSecret((env as any).DO_TOKEN)
+		const cfToken = await resolveSecret(cfEnv.DO_TOKEN)
 		if (cfToken) return cfToken
 	} catch {
 		// Not in Workers environment or env not available

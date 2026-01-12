@@ -17,16 +17,18 @@ One gem. One block. One round trip. That's it.
 ## Installation
 
 ```bash
-gem install capnweb
+gem install capnweb-do
 ```
 
 Or add to your Gemfile:
 
 ```ruby
-gem 'capnweb'
+gem 'capnweb-do'
 ```
 
 Requires Ruby 2.7+. For pattern matching: 3.0+. For fiber-based async: 3.2+.
+
+> **Note:** The gem is published as `capnweb-do` on RubyGems. After installation, require it as `capnweb`.
 
 ---
 

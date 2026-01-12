@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
-    <PackageId>CapnWeb.Do</PackageId>
+    <PackageId>Capnweb.Do</PackageId>
     <Version>0.1.0</Version>
     <Authors>DotDo</Authors>
     <Description>F# Cap'n Web RPC client library for DotDo platform</Description>

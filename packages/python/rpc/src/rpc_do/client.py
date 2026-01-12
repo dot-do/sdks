@@ -9,14 +9,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from types import TracebackType
 from typing import Any, Callable, TYPE_CHECKING
 
 import websockets
+from websockets.exceptions import ConnectionClosed
 
 from .promise import RpcPromise
 
 __all__ = ["RpcClient", "connect", "RpcError"]
+
+logger = logging.getLogger(__name__)
 
 
 def _build_ws_url(service: str) -> str:
@@ -101,6 +105,7 @@ class RpcClient:
         "_receive_task",
         "_closed",
         "_pull_waiters",
+        "_on_error",
     )
 
     def __init__(
@@ -108,6 +113,7 @@ class RpcClient:
         url: str,
         *,
         timeout: float = 30.0,
+        on_error: Callable[[Exception], None] | None = None,
     ) -> None:
         """
         Initialize the client (internal use - use connect() instead).
@@ -115,6 +121,7 @@ class RpcClient:
         Args:
             url: WebSocket URL for the RPC endpoint
             timeout: Default timeout for RPC calls in seconds
+            on_error: Optional callback invoked when connection errors occur
         """
         self._url = url
         self._ws: Any = None
@@ -125,6 +132,7 @@ class RpcClient:
         self._receive_task: asyncio.Task[None] | None = None
         self._closed = False
         self._pull_waiters: dict[int, asyncio.Future[Any]] = {}
+        self._on_error = on_error
 
     def __getattr__(self, name: str) -> RpcPromise[Any]:
         """
@@ -186,12 +194,32 @@ class RpcClient:
 
         try:
             async for message in self._ws:
-                await self._handle_message(message)
-        except Exception:
-            # Connection closed or other error
-            pass
+                try:
+                    await self._handle_message(message)
+                except Exception as e:
+                    # Log message handling errors but continue processing
+                    logger.error(
+                        "Error handling message: %s",
+                        str(e),
+                        exc_info=True,
+                    )
+                    if self._on_error:
+                        self._on_error(e)
+        except ConnectionClosed:
+            # Normal connection close - log at debug level
+            logger.debug("WebSocket connection closed")
         except asyncio.CancelledError:
+            # Task was cancelled - this is expected during shutdown
             pass
+        except Exception as e:
+            # Unexpected error - log and invoke callback
+            logger.error(
+                "Error in receive loop: %s",
+                str(e),
+                exc_info=True,
+            )
+            if self._on_error:
+                self._on_error(e)
 
     async def _handle_message(self, message: str | bytes) -> None:
         """
@@ -565,6 +593,7 @@ async def connect(service: str, **options: Any) -> RpcClient:
         service: Service name (e.g., "api.do") or full WebSocket URL
         **options: Connection options
             - timeout: Default timeout for RPC calls (default: 30.0)
+            - on_error: Callback invoked when connection errors occur
 
     Returns:
         Connected RpcClient instance
@@ -576,13 +605,17 @@ async def connect(service: str, **options: Any) -> RpcClient:
         # With options
         client = await connect("api.do", timeout=60.0)
 
+        # With error callback
+        client = await connect("api.do", on_error=lambda e: print(f"Error: {e}"))
+
         # Using full URL
         client = await connect("wss://api.do/rpc")
     """
     url = _build_ws_url(service)
     timeout = options.get("timeout", 30.0)
+    on_error = options.get("on_error")
 
-    client = RpcClient(url, timeout=timeout)
+    client = RpcClient(url, timeout=timeout, on_error=on_error)
     await client._connect()
 
     return client

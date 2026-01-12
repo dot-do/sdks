@@ -2,13 +2,13 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
-    <RootNamespace>DotDo.Kafka</RootNamespace>
-    <AssemblyName>DotDo.Kafka</AssemblyName>
+    <RootNamespace>Kafka.Do</RootNamespace>
+    <AssemblyName>Kafka.Do</AssemblyName>
     <Version>0.1.0</Version>
     <Authors>DotDo</Authors>
     <Description>F# Kafka SDK with functional-first API, AsyncSeq streaming, and railway-oriented error handling.</Description>
     <PackageTags>kafka;fsharp;functional;async;streaming;events</PackageTags>
-    <PackageId>DotDo.Kafka</PackageId>
+    <PackageId>Kafka.Do</PackageId>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 

@@ -19,6 +19,12 @@ name = "oauth_do"
 path = "src/lib.rs"
 
 [dependencies]
+# RPC layer (direct access for authenticated RPC operations)
+rpc-do = { path = "../rpc" }
+
+# Platform SDK (includes RPC and CapnWeb)
+platform-do = { path = "../dotdo" }
+
 # CLI framework
 clap = { version = "4.5", features = ["derive"] }
 

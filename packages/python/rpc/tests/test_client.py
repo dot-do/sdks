@@ -412,3 +412,189 @@ class TestPrivateAttributeAccess:
         # These are in __slots__ and should be accessible
         assert client._url == "ws://localhost:8787"
         assert client._closed is False
+
+
+class TestReceiveLoopExceptionHandling:
+    """Tests for _receive_loop exception logging and error callback propagation."""
+
+    @pytest.mark.asyncio
+    async def test_receive_loop_logs_exceptions(self, caplog):
+        """Test that exceptions in _receive_loop are logged, not silently swallowed."""
+        import logging
+        from rpc_do import RpcClient
+
+        client = RpcClient("ws://localhost:8787")
+
+        # Create a mock websocket that raises an exception
+        class MockWebSocket:
+            def __init__(self):
+                self.call_count = 0
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                self.call_count += 1
+                if self.call_count == 1:
+                    raise RuntimeError("Simulated WebSocket error")
+                raise StopAsyncIteration
+
+        client._ws = MockWebSocket()
+
+        # Run the receive loop with logging capture
+        with caplog.at_level(logging.ERROR, logger="rpc_do.client"):
+            await client._receive_loop()
+
+        # Verify that the exception was logged
+        assert any("Simulated WebSocket error" in record.message for record in caplog.records), \
+            "Exception should be logged, not silently swallowed"
+
+    @pytest.mark.asyncio
+    async def test_receive_loop_logs_handle_message_exceptions(self, caplog):
+        """Test that exceptions in _handle_message are logged."""
+        import logging
+        from rpc_do import RpcClient
+
+        client = RpcClient("ws://localhost:8787")
+
+        # Create a mock websocket that returns a message that causes _handle_message to fail
+        # We can trigger an error in _evaluate by providing a malformed error structure
+        class MockWebSocket:
+            def __init__(self):
+                # Send a reject message that will cause _evaluate_error to be called
+                # then the future.set_exception will fail because no future exists
+                self.messages = ['["resolve", 1, 42]']
+                self.index = 0
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if self.index < len(self.messages):
+                    msg = self.messages[self.index]
+                    self.index += 1
+                    return msg
+                raise StopAsyncIteration
+
+        client._ws = MockWebSocket()
+
+        # Patch at the class level to mock _handle_message
+        async def failing_handle_message(self, message):
+            raise ValueError("Handle message error")
+
+        # Run the receive loop with logging capture
+        with caplog.at_level(logging.ERROR, logger="rpc_do.client"):
+            with patch.object(RpcClient, '_handle_message', failing_handle_message):
+                await client._receive_loop()
+
+        # Verify that the exception was logged
+        assert any("Handle message error" in record.message for record in caplog.records), \
+            "Exception in _handle_message should be logged"
+
+    @pytest.mark.asyncio
+    async def test_receive_loop_calls_error_callback(self):
+        """Test that _receive_loop calls on_error callback when exceptions occur."""
+        from rpc_do import RpcClient
+
+        errors_received = []
+
+        def error_callback(error: Exception):
+            errors_received.append(error)
+
+        client = RpcClient("ws://localhost:8787", on_error=error_callback)
+
+        # Create a mock websocket that raises an exception
+        class MockWebSocket:
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                raise ConnectionError("Connection lost")
+
+        client._ws = MockWebSocket()
+
+        await client._receive_loop()
+
+        # Verify that the error callback was called
+        assert len(errors_received) == 1
+        assert isinstance(errors_received[0], ConnectionError)
+        assert "Connection lost" in str(errors_received[0])
+
+    @pytest.mark.asyncio
+    async def test_receive_loop_continues_on_message_error(self, caplog):
+        """Test that _receive_loop continues processing after a message handling error."""
+        import logging
+        from rpc_do import RpcClient
+
+        client = RpcClient("ws://localhost:8787")
+
+        # Track how many messages were processed
+        messages_processed = []
+
+        # Create a mock websocket that sends multiple messages
+        class MockWebSocket:
+            def __init__(self):
+                self.messages = [
+                    '["resolve", 1, "first"]',
+                    '["resolve", 2, "second"]',
+                    '["resolve", 3, "third"]',
+                ]
+                self.index = 0
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if self.index < len(self.messages):
+                    msg = self.messages[self.index]
+                    self.index += 1
+                    return msg
+                raise StopAsyncIteration
+
+        client._ws = MockWebSocket()
+
+        # Create a side_effect function that tracks calls and fails on second
+        call_count = 0
+        original_handle = RpcClient._handle_message
+
+        async def sometimes_failing_handle_message(self, message):
+            nonlocal call_count
+            call_count += 1
+            messages_processed.append(message)
+            if call_count == 2:
+                raise ValueError("Error on second message")
+            return await original_handle(self, message)
+
+        with caplog.at_level(logging.ERROR, logger="rpc_do.client"):
+            with patch.object(RpcClient, '_handle_message', sometimes_failing_handle_message):
+                await client._receive_loop()
+
+        # All three messages should have been attempted to be processed
+        assert len(messages_processed) == 3, \
+            "Loop should continue processing messages after an error"
+
+    @pytest.mark.asyncio
+    async def test_receive_loop_connection_closed_not_logged_as_error(self, caplog):
+        """Test that normal connection close (websockets.ConnectionClosed) is logged at debug level."""
+        import logging
+        from rpc_do import RpcClient
+
+        client = RpcClient("ws://localhost:8787")
+
+        # Create a mock websocket that simulates connection closed
+        class MockWebSocket:
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                # Simulate connection closed by just stopping iteration
+                raise StopAsyncIteration
+
+        client._ws = MockWebSocket()
+
+        with caplog.at_level(logging.DEBUG, logger="rpc_do.client"):
+            await client._receive_loop()
+
+        # Should not have any ERROR level logs for normal closure
+        error_logs = [r for r in caplog.records if r.levelno >= logging.ERROR]
+        assert len(error_logs) == 0, "Normal connection close should not be logged as error"

@@ -50,3 +50,33 @@ export type {
 
 // Re-export login types only (not functions - they use 'open' package)
 export type { LoginOptions, LoginResult, OAuthProvider } from './login.js'
+
+// Authenticated RPC support (integrates with platform.do and rpc.do)
+export {
+	createAuthenticatedClient,
+	connectAuthenticated,
+	createAuthFactory,
+	// Direct RPC access (using rpc.do)
+	createDirectRpcClient,
+	createAuthenticatedRpcSession,
+	connectRpc,
+} from './rpc.js'
+export type {
+	AuthenticatedRpcOptions,
+	AuthenticatedRpcClient,
+	DirectRpcOptions,
+	ConnectOptions,
+} from './rpc.js'
+
+// Re-export platform.do types and errors for convenience
+export type { DotDo, DotDoOptions, RpcProxy, $ } from './rpc.js'
+export {
+	RpcClient,
+	connect,
+	CapnwebError,
+	ConnectionError,
+	RpcError,
+	CapabilityError,
+	TimeoutError,
+	PoolTimeoutError,
+} from './rpc.js'

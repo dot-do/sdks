@@ -2,28 +2,31 @@
 Pytest configuration and fixtures for rpc-do tests.
 
 This module provides fixtures for:
-- Connecting to the test server
-- Loading conformance test specifications
-- Mocking RPC clients for unit tests
+- Mock server testing (default) - no external dependencies
+- Live server testing - set TEST_SERVER_URL environment variable
 - Reusable test utilities
 
-To run conformance tests, you need the test server running:
-    cd /path/to/dot-do-capnweb
-    npm run test:server
-
-Then run tests:
+To run conformance tests with mock server (default):
     cd packages/python/rpc
     PYTHONPATH=src pytest tests/test_conformance.py -v
+
+To run with live server:
+    cd /path/to/dot-do-capnweb
+    npm run test:server &
+    cd packages/python/rpc
+    TEST_SERVER_URL=http://localhost:8787 PYTHONPATH=src pytest tests/test_conformance.py -v
 """
+
+from __future__ import annotations
 
 import os
 import socket
-import asyncio
-import pytest
-import yaml
 from pathlib import Path
 from typing import Any, AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+import yaml
 
 
 def is_server_available(host: str = "localhost", port: int = 8787) -> bool:
@@ -38,6 +41,7 @@ def is_server_available(host: str = "localhost", port: int = 8787) -> bool:
 # ============================================================================
 # Unit Test Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def mock_websocket():
@@ -86,14 +90,35 @@ def mock_client_with_execute():
 
 
 # ============================================================================
-# Integration Test Fixtures
+# Mock Server Fixtures
 # ============================================================================
+
+
+@pytest.fixture
+def mock_server():
+    """Create a MockServer for testing without network."""
+    from .mock_server import MockServer
+
+    return MockServer()
+
+
+@pytest.fixture
+def mock_test_client(mock_server):
+    """Create a MockClient connected to MockServer."""
+    from .test_conformance import MockClient
+
+    return MockClient(mock_server)
+
+
+# ============================================================================
+# Integration Test Fixtures (Live Server)
+# ============================================================================
+
 
 @pytest.fixture(scope="session")
 def server_url() -> str:
     """Get the test server URL from environment."""
-    url = os.environ.get("TEST_SERVER_URL", "http://localhost:8787")
-    return url
+    return os.environ.get("TEST_SERVER_URL", "http://localhost:8787")
 
 
 @pytest.fixture(scope="session")
@@ -121,8 +146,10 @@ def server_available() -> bool:
 
 
 @pytest.fixture
-async def client(server_ws_url: str, server_available: bool) -> AsyncGenerator[Any, None]:
-    """Create a client connected to the test server."""
+async def live_client(
+    server_ws_url: str, server_available: bool
+) -> AsyncGenerator[Any, None]:
+    """Create a client connected to the live test server."""
     if not server_available:
         pytest.skip(
             "Test server not available. Run 'npm run test:server' in the "
@@ -137,6 +164,11 @@ async def client(server_ws_url: str, server_available: bool) -> AsyncGenerator[A
         await client.close()
     except Exception as e:
         pytest.skip(f"Could not connect to test server: {e}")
+
+
+# ============================================================================
+# Conformance Test Spec Loading
+# ============================================================================
 
 
 def load_test_specs(spec_dir: Path) -> list[dict[str, Any]]:
@@ -156,20 +188,23 @@ def load_test_specs(spec_dir: Path) -> list[dict[str, Any]]:
     return specs
 
 
-def pytest_generate_tests(metafunc):
-    """Generate test cases from conformance specs."""
-    if "conformance_test" in metafunc.fixturenames:
-        spec_dir = Path(os.environ.get(
-            "TEST_SPEC_DIR",
-            Path(__file__).parent.parent.parent.parent.parent / "test" / "conformance"
-        ))
-        tests = load_test_specs(spec_dir)
-        if tests:
-            metafunc.parametrize(
-                "conformance_test",
-                tests,
-                ids=[f"{t.get('_category', 'test')}::{t['name']}" for t in tests]
-            )
-        else:
-            # No tests found - skip
-            metafunc.parametrize("conformance_test", [{}], ids=["no_specs_found"])
+def pytest_configure(config):
+    """Register custom markers."""
+    config.addinivalue_line(
+        "markers", "conformance: mark test as conformance test"
+    )
+    config.addinivalue_line(
+        "markers", "live_server: mark test as requiring live server"
+    )
+
+
+# ============================================================================
+# pytest-asyncio Configuration
+# ============================================================================
+
+
+@pytest.fixture(scope="session")
+def event_loop_policy():
+    """Configure asyncio event loop policy."""
+    import asyncio
+    return asyncio.DefaultEventLoopPolicy()

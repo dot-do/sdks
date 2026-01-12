@@ -9,3 +9,7 @@ require (
 )
 
 require golang.org/x/net v0.17.0 // indirect
+
+replace go.rpc.do => ../rpc
+
+replace go.capnweb.do => ../capnweb

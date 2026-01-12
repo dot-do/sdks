@@ -2,13 +2,13 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
-    <RootNamespace>DotDo.Mongo</RootNamespace>
-    <AssemblyName>DotDo.Mongo</AssemblyName>
+    <RootNamespace>Mongo.Do</RootNamespace>
+    <AssemblyName>Mongo.Do</AssemblyName>
     <Version>0.1.0</Version>
     <Authors>DotDo</Authors>
     <Description>F# MongoDB SDK with functional-first API, computation expressions, and railway-oriented error handling.</Description>
     <PackageTags>mongodb;fsharp;functional;async;nosql</PackageTags>
-    <PackageId>DotDo.Mongo</PackageId>
+    <PackageId>Mongo.Do</PackageId>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 

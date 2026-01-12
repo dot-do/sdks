@@ -2,8 +2,8 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
-    <RootNamespace>OAuthDo</RootNamespace>
-    <PackageId>OAuthDo.FSharp</PackageId>
+    <RootNamespace>OAuth.Do</RootNamespace>
+    <PackageId>OAuth.Do</PackageId>
     <Version>0.1.0</Version>
     <Authors>Drivly</Authors>
     <Description>Device flow OAuth SDK for the .do platform (F#)</Description>

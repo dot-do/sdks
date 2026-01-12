@@ -66,13 +66,151 @@ Want to help improve maturity for a specific language? See the language implemen
 
 ## Installation
 
-[Cap'n Web is available as an npm package.](https://www.npmjs.com/package/capnweb)
+### TypeScript / JavaScript
 
-```
-npm i capnweb
+```bash
+# Core Cap'n Web (Cloudflare's official package)
+npm install capnweb
+
+# DotDo SDK packages (includes Cap'n Web + additional integrations)
+npm install @dotdo/capnweb
+npm install rpc.do
 ```
 
-For DotDo SDKs in other languages, see the `packages/` directory.
+```typescript
+import { newWebSocketRpcSession } from "capnweb";
+
+const api = newWebSocketRpcSession("wss://api.example.com");
+const result = await api.hello("World");
+```
+
+### Python
+
+```bash
+pip install capnweb-do
+```
+
+```python
+import asyncio
+import capnweb
+
+async def main():
+    async with capnweb.connect("wss://api.example.com") as api:
+        user = await api.users.get(123)
+        print(f"Hello, {user['name']}")
+
+asyncio.run(main())
+```
+
+### Rust
+
+```bash
+cargo add capnweb-do
+```
+
+```rust
+use capnweb::prelude::*;
+
+#[tokio::main]
+async fn main() -> capnweb::Result<()> {
+    let api = capnweb::connect::<Api>("wss://api.example.com").await?;
+    let user = api.users().get(42).await?;
+    println!("Hello, {}!", user.name);
+    Ok(())
+}
+```
+
+### Go
+
+```bash
+go get go.capnweb.do
+```
+
+```go
+import "go.capnweb.do"
+
+session, err := capnweb.Dial(ctx, "wss://api.example.com")
+if err != nil {
+    log.Fatal(err)
+}
+defer session.Close()
+
+users := capnweb.Stub[UsersAPI](session, "users")
+user, err := users.Get(ctx, 123)
+```
+
+### .NET (C# / F#)
+
+```bash
+dotnet add package Capnweb.Do
+```
+
+```csharp
+await using var session = await CapnWeb.ConnectAsync<IUserApi>("wss://api.example.com");
+var user = await session.Api.GetUserAsync(123);
+Console.WriteLine($"Hello, {user.Name}!");
+```
+
+### Ruby
+
+```bash
+gem install capnweb.do
+```
+
+```ruby
+require 'capnweb'
+
+CapnWeb.connect('wss://api.example.com') do |api|
+  user = api.users.get(123).await!
+  puts "Hello, #{user['name']}!"
+end
+```
+
+### Java / Kotlin
+
+```xml
+<!-- Maven -->
+<dependency>
+    <groupId>do.capnweb</groupId>
+    <artifactId>sdk</artifactId>
+    <version>0.1.0</version>
+</dependency>
+```
+
+```kotlin
+// Gradle (Kotlin DSL)
+implementation("do.capnweb:sdk:0.1.0")
+```
+
+```java
+try (var session = CapnWeb.connect("wss://api.example.com")) {
+    var todos = session.stub(TodoService.class);
+    Todo todo = todos.get("123");
+    System.out.println("Todo: " + todo.title());
+}
+```
+
+### Elixir
+
+```elixir
+# mix.exs
+def deps do
+  [{:capnweb_do, "~> 0.1"}]
+end
+```
+
+```elixir
+{:ok, api} = CapnWeb.connect("wss://api.example.com")
+
+user = api
+|> CapnWeb.users()
+|> CapnWeb.get(123)
+|> CapnWeb.await!()
+
+IO.puts("Hello, #{user.name}!")
+```
+
+For detailed documentation and more language-specific examples, see the `packages/` directory.
 
 ## Example
 

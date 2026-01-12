@@ -15,6 +15,22 @@ import { forceInitMap } from "./map.js";
 
 forceInitMap();
 
+// Re-export standardized error types and codes
+export {
+  ErrorCode,
+  ErrorCodeName,
+  CapnwebError,
+  ConnectionError,
+  RpcError,
+  TimeoutError,
+  CapabilityError,
+  SerializationError,
+  isErrorCode,
+  createError,
+  wrapError,
+} from "./errors.js";
+export type { ErrorCodeType, CapabilityId } from "./errors.js";
+
 // Re-export public API types.
 export { serialize, deserialize, newWorkersWebSocketRpcResponse, newHttpBatchRpcResponse,
          nodeHttpBatchRpcResponse };

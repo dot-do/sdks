@@ -5,7 +5,8 @@ import type { OAuthConfig } from './types.js'
  */
 function getEnv(key: string): string | undefined {
 	// Check globalThis first (Workers)
-	if ((globalThis as any)[key]) return (globalThis as any)[key]
+	const globalAny = globalThis as Record<string, unknown>
+	if (typeof globalAny[key] === 'string') return globalAny[key]
 	// Check process.env (Node.js)
 	if (typeof process !== 'undefined' && process.env?.[key]) return process.env[key]
 	return undefined

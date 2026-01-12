@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from types import TracebackType
 
 
-__all__ = ["DotDo", "DotDoConfig", "AuthMethod", "RetryConfig"]
+__all__ = ["DotDo", "DotDoConfig", "AuthMethod", "AuthOptions", "RetryConfig"]
 __version__ = "0.1.0"
 
 
@@ -58,14 +58,24 @@ class RetryConfig:
 
 
 @dataclass
+class AuthOptions:
+    """Authentication options for DotDo client."""
+    api_key: str | None = None
+    access_token: str | None = None
+    headers: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class DotDoConfig:
     """Configuration for DotDo client."""
     base_url: str = "wss://api.dotdo.dev/rpc"
     api_key: str | None = None
+    auth: AuthOptions | None = None
     auth_method: AuthMethod = AuthMethod.API_KEY
     timeout: float = 30.0
     pool_size: int = 10
     retry: RetryConfig = field(default_factory=RetryConfig)
+    debug: bool = False
 
 
 class ConnectionPool:
@@ -171,6 +181,8 @@ class DotDo:
         timeout: float = 30.0,
         pool_size: int = 10,
         max_retries: int = 3,
+        auth: dict[str, Any] | AuthOptions | None = None,
+        debug: bool = False,
         config: DotDoConfig | None = None,
     ) -> None:
         """
@@ -182,18 +194,41 @@ class DotDo:
             timeout: Default timeout for RPC calls in seconds
             pool_size: Number of connections to maintain in the pool
             max_retries: Maximum number of retry attempts for failed calls
+            auth: Authentication options (api_key, access_token, headers)
+            debug: Enable debug logging
             config: Full configuration object (overrides other parameters)
         """
         if config is not None:
             self._config = config
         else:
-            resolved_api_key = api_key or os.environ.get("DOTDO_API_KEY")
+            # Resolve auth options
+            auth_options: AuthOptions | None = None
+            if auth is not None:
+                if isinstance(auth, AuthOptions):
+                    auth_options = auth
+                elif isinstance(auth, dict):
+                    auth_options = AuthOptions(
+                        api_key=auth.get("api_key"),
+                        access_token=auth.get("access_token"),
+                        headers=auth.get("headers", {}),
+                    )
+
+            # Resolve API key: explicit > auth options > env var
+            resolved_api_key = (
+                api_key
+                or (auth_options.api_key if auth_options else None)
+                or (auth_options.access_token if auth_options else None)
+                or os.environ.get("DOTDO_API_KEY")
+            )
+
             self._config = DotDoConfig(
                 base_url=base_url or "wss://api.dotdo.dev/rpc",
                 api_key=resolved_api_key,
+                auth=auth_options,
                 timeout=timeout,
                 pool_size=pool_size,
                 retry=RetryConfig(max_retries=max_retries),
+                debug=debug,
             )
 
         self._pool: ConnectionPool | None = None

@@ -122,24 +122,41 @@ async function runTestCase(
     for (const step of test.setup) {
       if (step.pipeline) {
         // Execute pipeline in setup
-        const pipeline = client.pipeline();
-        for (const pStep of step.pipeline) {
-          const resolvedArgs = resolveArgs(pStep.args || [], context);
-          const parts = pStep.call.split('.');
-          if (parts.length === 1) {
-            pipeline.call(pStep.call, ...resolvedArgs);
-          } else {
-            pipeline.callOn(parts[0], parts.slice(1).join('.'), ...resolvedArgs);
+        // Check if this is a simple pipeline or one that involves context variables with maps
+        const pStep = step.pipeline[0];
+        if (pStep && pStep.call.startsWith('$') && pStep.map) {
+          // Special case: pipeline step that maps over a context variable
+          const varName = pStep.call.substring(1);
+          const value = context.get(varName);
+          if (value === undefined) {
+            throw new Error(`Unknown context variable in setup pipeline: ${varName}`);
           }
-          if (pStep.as) {
-            pipeline.as(pStep.as);
+          const captures = buildCaptures(pStep.map.captures || [], context, client);
+          const result = await client.serverMap(value, pStep.map.expression, captures);
+          if (step.as) {
+            context.set(step.as, result);
           }
-        }
-        const result = await pipeline.execute();
-        if (step.as) {
-          // Get the last result or named result
-          const lastStep = step.pipeline[step.pipeline.length - 1];
-          context.set(step.as, lastStep.as ? result[lastStep.as] : result.__last);
+        } else {
+          // Standard pipeline execution
+          const pipeline = client.pipeline();
+          for (const ps of step.pipeline) {
+            const resolvedArgs = resolveArgs(ps.args || [], context);
+            const parts = ps.call.split('.');
+            if (parts.length === 1) {
+              pipeline.call(ps.call, ...resolvedArgs);
+            } else {
+              pipeline.callOn(parts[0], parts.slice(1).join('.'), ...resolvedArgs);
+            }
+            if (ps.as) {
+              pipeline.as(ps.as);
+            }
+          }
+          const result = await pipeline.execute();
+          if (step.as) {
+            // Get the last result or named result
+            const lastStep = step.pipeline[step.pipeline.length - 1];
+            context.set(step.as, lastStep.as ? result[lastStep.as] : result.__last);
+          }
         }
       } else if (step.map) {
         // Execute call with map in setup
@@ -281,8 +298,21 @@ async function runTestCase(
     const resolvedArgs = resolveArgs(test.args || [], context);
     const captures = buildCaptures(test.map.captures || [], context, client);
 
-    // Use callAndMap for single round trip
-    const result = await client.callAndMap(test.call, resolvedArgs, test.map.expression, captures);
+    let result: unknown;
+
+    // Check if we're mapping over a context variable
+    if (test.call.startsWith('$')) {
+      const varName = test.call.substring(1);
+      const value = context.get(varName);
+      if (value === undefined) {
+        throw new Error(`Unknown context variable: ${varName}`);
+      }
+      // Use serverMap for mapping over a stored value
+      result = await client.serverMap(value, test.map.expression, captures);
+    } else {
+      // Use callAndMap for single round trip
+      result = await client.callAndMap(test.call, resolvedArgs, test.map.expression, captures);
+    }
 
     // Check expectations
     if (test.expect !== undefined) {
@@ -527,13 +557,6 @@ for (const spec of specs) {
     });
 
     for (const test of spec.tests) {
-      // Skip some complex tests that need more infrastructure
-      const skipTests = ['map_counter_values', 'map_increment_counters'];
-      if (skipTests.includes(test.name)) {
-        it.skip(test.name, () => {});
-        continue;
-      }
-
       it(test.name, async () => {
         await runTestCase(client, server, test, context);
       });

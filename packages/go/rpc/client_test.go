@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,13 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"nhooyr.io/websocket"
 )
 
 // mockServer creates a test WebSocket server for unit testing.
 type mockServer struct {
 	server   *httptest.Server
-	upgrader websocket.Upgrader
 	handlers map[string]func([]any) (any, error)
 	mu       sync.RWMutex
 	conns    []*websocket.Conn
@@ -25,9 +25,6 @@ type mockServer struct {
 func newMockServer() *mockServer {
 	ms := &mockServer{
 		handlers: make(map[string]func([]any) (any, error)),
-		upgrader: websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool { return true },
-		},
 	}
 
 	// Register default test handlers
@@ -95,7 +92,9 @@ func (ms *mockServer) registerDefaults() {
 }
 
 func (ms *mockServer) handleConnection(w http.ResponseWriter, r *http.Request) {
-	conn, err := ms.upgrader.Upgrade(w, r, nil)
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		OriginPatterns: []string{"*"},
+	})
 	if err != nil {
 		return
 	}
@@ -104,10 +103,11 @@ func (ms *mockServer) handleConnection(w http.ResponseWriter, r *http.Request) {
 	ms.conns = append(ms.conns, conn)
 	ms.connMu.Unlock()
 
-	defer conn.Close()
+	defer conn.Close(websocket.StatusNormalClosure, "")
 
+	ctx := r.Context()
 	for {
-		_, data, err := conn.ReadMessage()
+		_, data, err := conn.Read(ctx)
 		if err != nil {
 			return
 		}
@@ -118,12 +118,12 @@ func (ms *mockServer) handleConnection(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if msg.Type == "call" {
-			ms.handleCall(conn, msg)
+			ms.handleCall(ctx, conn, msg)
 		}
 	}
 }
 
-func (ms *mockServer) handleCall(conn *websocket.Conn, msg rpcMessage) {
+func (ms *mockServer) handleCall(ctx context.Context, conn *websocket.Conn, msg rpcMessage) {
 	response := rpcMessage{
 		ID:   msg.ID,
 		Type: "return",
@@ -152,7 +152,7 @@ func (ms *mockServer) handleCall(conn *websocket.Conn, msg rpcMessage) {
 	}
 
 	data, _ := json.Marshal(response)
-	conn.WriteMessage(websocket.TextMessage, data)
+	conn.Write(ctx, websocket.MessageText, data)
 }
 
 func (ms *mockServer) URL() string {
@@ -162,7 +162,7 @@ func (ms *mockServer) URL() string {
 func (ms *mockServer) Close() {
 	ms.connMu.Lock()
 	for _, conn := range ms.conns {
-		conn.Close()
+		conn.Close(websocket.StatusNormalClosure, "server closing")
 	}
 	ms.connMu.Unlock()
 	ms.server.Close()

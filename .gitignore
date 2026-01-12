@@ -1,10 +1,46 @@
-node_modules
+# Dependencies
+node_modules/
+
+# Build artifacts
+/dist/
+__pycache__/
+*.pyc
+coverage/
 .wrangler/
 examples/worker-react/web/dist/
-notes.txt
-/dist/
-packages/swift/.build/
 
 # Rust
 target/
 Cargo.lock
+
+# Swift
+packages/swift/.build/
+
+# Secrets - NEVER commit these
+.env
+.env.*
+.env.local
+.env.*.local
+credentials.json
+*.key
+*.pem
+*.p12
+*.pfx
+token
+token.json
+*.token
+secrets.json
+.secrets
+
+# IDE/Editor files
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Project notes
+notes.txt

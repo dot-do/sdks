@@ -38,16 +38,24 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-capnweb = "0.1"
+capnweb-do = "0.1"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 ```
+
+Or use cargo:
+
+```bash
+cargo add capnweb-do
+```
+
+> **Note:** The crate is published as `capnweb-do` on crates.io (since crates.io doesn't allow dots in crate names). After installation, use it as `capnweb_do` or rename in your imports.
 
 ### Feature Flags
 
 ```toml
 [dependencies]
-capnweb = { version = "0.1", features = ["macros", "http"] }
+capnweb-do = { version = "0.1", features = ["macros", "http"] }
 ```
 
 | Feature | Default | Description |

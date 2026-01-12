@@ -60,14 +60,38 @@ class ImportTableEntry {
   // this import. Initialized on first use (so `undefined` is the same as an empty list).
   private onBrokenRegistrations?: number[];
 
+  // Tracks outstanding pipelined calls made on this import before resolution.
+  // Each entry is a PromiseWithResolvers that will be resolved when the pipelined call's
+  // result is resolved (or the import is aborted).
+  private pendingPipelinedCalls?: PromiseWithResolvers<void>[];
+
+  // Register a pipelined call and return a resolver to call when the call completes.
+  // This is used to implement embargo handling - when resolve() is called, we wrap
+  // the resolution in a hook that waits for all pending pipelined calls to complete.
+  registerPipelinedCall(): PromiseWithResolvers<void> {
+    if (!this.pendingPipelinedCalls) {
+      this.pendingPipelinedCalls = [];
+    }
+    const resolver = Promise.withResolvers<void>();
+    // Attach a no-op catch handler to prevent unhandled rejection warnings.
+    // The actual handling is done via Promise.allSettled in resolve().
+    resolver.promise.catch(() => {});
+    this.pendingPipelinedCalls.push(resolver);
+    return resolver;
+  }
+
   resolve(resolution: StubHook) {
-    // TODO: Need embargo handling here? PayloadStubHook needs to be wrapped in a
-    // PromiseStubHook awaiting the embargo I suppose. Previous notes on embargoes:
-    // - Resolve message specifies last call that was received before the resolve. The introducer is
-    //   responsible for any embargoes up to that point.
-    // - Any further calls forwarded by the introducer after that point MUST immediately resolve to
-    //   a forwarded call. The caller is responsible for ensuring the last of these is handed off
-    //   before direct calls can be delivered.
+    // Embargo handling for promise pipelining:
+    // When a promise resolves, calls that were pipelined through the introducer (the party
+    // that held the promise) may still be in flight. We need to ensure these calls complete
+    // before allowing direct calls to the resolved capability. This prevents race conditions
+    // where a direct call could arrive before an earlier pipelined call.
+    //
+    // The embargo works as follows:
+    // 1. Before resolution, pipelined calls are registered via registerPipelinedCall()
+    // 2. When resolve() is called, if there are pending pipelined calls, we wrap the
+    //    resolution in an EmbargoedStubHook that waits for all pending calls to complete
+    // 3. The embargo is lifted when all pipelined calls have received their resolutions
 
     if (this.localRefcount == 0) {
       // Already disposed (canceled), so ignore the resolution and don't send a redundant release.
@@ -75,7 +99,21 @@ class ImportTableEntry {
       return;
     }
 
-    this.resolution = resolution;
+    // If there are pending pipelined calls, wrap the resolution in an embargoed hook
+    // that waits for all of them to complete before allowing direct calls.
+    if (this.pendingPipelinedCalls && this.pendingPipelinedCalls.length > 0) {
+      const embargoPromises = this.pendingPipelinedCalls.map(r => r.promise);
+      // Create a promise that resolves when all pending pipelined calls complete.
+      // Use Promise.allSettled to handle cases where some pipelined calls may have been
+      // aborted (e.g., if the import was disposed). We still proceed with the resolution
+      // since the embargo is about ordering, not about success of the pipelined calls.
+      const embargoPromise = Promise.allSettled(embargoPromises).then(() => resolution);
+      // Wrap in EmbargoedStubHook which forwards calls through the promise until embargo lifts
+      this.resolution = new EmbargoedStubHook(embargoPromise, resolution);
+      this.pendingPipelinedCalls = undefined;
+    } else {
+      this.resolution = resolution;
+    }
     this.sendRelease();
 
     if (this.onBrokenRegistrations) {
@@ -103,6 +141,36 @@ class ImportTableEntry {
     if (this.activePull) {
       this.activePull.resolve();
       this.activePull = undefined;
+    }
+
+    // Notify any registered resolution callbacks
+    if (this.onResolvedCallbacks) {
+      for (const callback of this.onResolvedCallbacks) {
+        try {
+          callback();
+        } catch (e) {
+          // Ignore errors in callbacks
+        }
+      }
+      this.onResolvedCallbacks = undefined;
+    }
+  }
+
+  // Callbacks to invoke when this import is resolved. Used to signal the parent
+  // import's embargo handler that this pipelined call has completed.
+  private onResolvedCallbacks?: (() => void)[];
+
+  // Register a callback to be called when this import is resolved.
+  // Used by the embargo mechanism to track when pipelined calls complete.
+  onResolved(callback: () => void): void {
+    if (this.resolution) {
+      // Already resolved, call immediately
+      callback();
+    } else {
+      if (!this.onResolvedCallbacks) {
+        this.onResolvedCallbacks = [];
+      }
+      this.onResolvedCallbacks.push(callback);
     }
   }
 
@@ -133,6 +201,27 @@ class ImportTableEntry {
         this.activePull = undefined;
       }
 
+      // Reject all pending pipelined calls so they don't block forever.
+      // Note: We reject rather than resolve because the calls won't complete successfully.
+      if (this.pendingPipelinedCalls) {
+        for (const resolver of this.pendingPipelinedCalls) {
+          resolver.reject(error);
+        }
+        this.pendingPipelinedCalls = undefined;
+      }
+
+      // Notify any registered resolution callbacks (even for errors, the import is now "resolved")
+      if (this.onResolvedCallbacks) {
+        for (const callback of this.onResolvedCallbacks) {
+          try {
+            callback();
+          } catch (e) {
+            // Ignore errors in callbacks
+          }
+        }
+        this.onResolvedCallbacks = undefined;
+      }
+
       // The RpcSession itself will have called all our callbacks so we don't need to track the
       // registrations anymore.
       this.onBrokenRegistrations = undefined;
@@ -158,6 +247,177 @@ class ImportTableEntry {
     }
   }
 };
+
+// EmbargoedStubHook wraps a resolution that is under embargo due to pending pipelined calls.
+// It maintains e-order by ensuring that calls made through this hook during the embargo period
+// are queued and delivered after the embargo lifts, preserving the order relative to pipelined
+// calls that are still in flight.
+//
+// The embargo ensures that:
+// 1. Calls made before the embargo lifts are queued and delivered in order
+// 2. Once the embargo lifts, new calls go directly to the resolution
+// 3. Queued calls are delivered before direct calls to preserve e-order
+class EmbargoedStubHook extends StubHook {
+  private embargoPromise: Promise<StubHook>;
+  private resolution: StubHook;
+  private embargoLifted: boolean = false;
+
+  constructor(embargoPromise: Promise<StubHook>, resolution: StubHook) {
+    super();
+    this.embargoPromise = embargoPromise;
+    this.resolution = resolution;
+
+    // Track when the embargo lifts
+    this.embargoPromise.then(() => {
+      this.embargoLifted = true;
+    }).catch(() => {
+      // Embargo was aborted, but we still have the resolution
+      this.embargoLifted = true;
+    });
+  }
+
+  call(path: PropertyPath, args: RpcPayload): StubHook {
+    if (this.embargoLifted) {
+      // Embargo has lifted, forward directly
+      return this.resolution.call(path, args);
+    }
+
+    // During embargo, we need to ensure e-order by waiting for the embargo to lift
+    // before forwarding the call. This is similar to how PromiseStubHook works.
+    // We must deep-copy args since we can't serialize them yet.
+    args.ensureDeepCopied();
+
+    return new EmbargoedCallStubHook(
+      this.embargoPromise.then(hook => hook.call(path, args))
+    );
+  }
+
+  map(path: PropertyPath, captures: StubHook[], instructions: unknown[]): StubHook {
+    if (this.embargoLifted) {
+      return this.resolution.map(path, captures, instructions);
+    }
+
+    return new EmbargoedCallStubHook(
+      this.embargoPromise.then(
+        hook => hook.map(path, captures, instructions),
+        err => {
+          for (let cap of captures) {
+            cap.dispose();
+          }
+          throw err;
+        }
+      )
+    );
+  }
+
+  get(path: PropertyPath): StubHook {
+    if (this.embargoLifted) {
+      return this.resolution.get(path);
+    }
+
+    return new EmbargoedCallStubHook(
+      this.embargoPromise.then(hook => hook.get(path))
+    );
+  }
+
+  dup(): StubHook {
+    if (this.embargoLifted) {
+      return this.resolution.dup();
+    }
+    // During embargo, we need to dup the underlying resolution
+    // but maintain embargo semantics for the duplicate
+    return new EmbargoedStubHook(this.embargoPromise, this.resolution.dup());
+  }
+
+  pull(): RpcPayload | Promise<RpcPayload> {
+    // Pull is not subject to e-order concerns, so we can use the resolution directly
+    return this.resolution.pull();
+  }
+
+  ignoreUnhandledRejections(): void {
+    this.resolution.ignoreUnhandledRejections();
+  }
+
+  dispose(): void {
+    this.resolution.dispose();
+  }
+
+  onBroken(callback: (error: any) => void): void {
+    this.resolution.onBroken(callback);
+  }
+}
+
+// EmbargoedCallStubHook wraps a call made during an embargo period.
+// It waits for the embargo to lift before delivering the call result.
+class EmbargoedCallStubHook extends StubHook {
+  private promise: Promise<StubHook>;
+  private resolution: StubHook | undefined;
+
+  constructor(promise: Promise<StubHook>) {
+    super();
+    this.promise = promise.then(res => { this.resolution = res; return res; });
+  }
+
+  call(path: PropertyPath, args: RpcPayload): StubHook {
+    // Chain calls through the promise to maintain e-order
+    args.ensureDeepCopied();
+    return new EmbargoedCallStubHook(this.promise.then(hook => hook.call(path, args)));
+  }
+
+  map(path: PropertyPath, captures: StubHook[], instructions: unknown[]): StubHook {
+    return new EmbargoedCallStubHook(this.promise.then(
+      hook => hook.map(path, captures, instructions),
+      err => {
+        for (let cap of captures) {
+          cap.dispose();
+        }
+        throw err;
+      }
+    ));
+  }
+
+  get(path: PropertyPath): StubHook {
+    return new EmbargoedCallStubHook(this.promise.then(hook => hook.get(path)));
+  }
+
+  dup(): StubHook {
+    if (this.resolution) {
+      return this.resolution.dup();
+    }
+    return new EmbargoedCallStubHook(this.promise.then(hook => hook.dup()));
+  }
+
+  pull(): RpcPayload | Promise<RpcPayload> {
+    if (this.resolution) {
+      return this.resolution.pull();
+    }
+    return this.promise.then(hook => hook.pull());
+  }
+
+  ignoreUnhandledRejections(): void {
+    if (this.resolution) {
+      this.resolution.ignoreUnhandledRejections();
+    } else {
+      this.promise.then(res => res.ignoreUnhandledRejections(), () => {});
+    }
+  }
+
+  dispose(): void {
+    if (this.resolution) {
+      this.resolution.dispose();
+    } else {
+      this.promise.then(hook => hook.dispose(), () => {});
+    }
+  }
+
+  onBroken(callback: (error: any) => void): void {
+    if (this.resolution) {
+      this.resolution.onBroken(callback);
+    } else {
+      this.promise.then(hook => hook.onBroken(callback), callback);
+    }
+  }
+}
 
 class RpcImportHook extends StubHook {
   public entry?: ImportTableEntry;  // undefined when we're disposed
@@ -298,6 +558,18 @@ export type RpcSessionOptions = {
    * to serialize the error with the stack omitted.
    */
   onSendError?: (error: Error) => Error | void;
+
+  /**
+   * If provided, this function will be called when an internal error occurs that cannot be
+   * propagated through normal RPC mechanisms. This includes:
+   * - Errors when sending abort messages to the peer
+   * - Errors during JSON serialization of messages
+   * - Other internal errors that would otherwise be silently suppressed
+   *
+   * This is useful for logging and debugging purposes. If not provided, such errors are
+   * silently ignored (though they still trigger appropriate abort behavior).
+   */
+  onInternalError?: (error: Error) => void;
 };
 
 class RpcSessionImpl implements Importer, Exporter {
@@ -517,7 +789,18 @@ class RpcSessionImpl implements Importer, Exporter {
     } catch (err) {
       // If JSON stringification failed, there's something wrong with the devaluator, as it should
       // not allow non-JSONable values to be injected in the first place.
-      try { this.abort(err); } catch (err2) {}
+      try {
+        this.abort(err);
+      } catch (err2) {
+        // Abort failed - report via onInternalError callback if provided
+        if (this.options.onInternalError) {
+          try {
+            this.options.onInternalError(err2 instanceof Error ? err2 : new Error(String(err2)));
+          } catch {
+            // Ignore errors from the callback itself to prevent infinite loops
+          }
+        }
+      }
       throw err;
     }
 
@@ -543,8 +826,23 @@ class RpcSessionImpl implements Importer, Exporter {
     }
     this.send(["push", value]);
 
+    // Register this pipelined call with the parent import for embargo handling.
+    // When the parent import resolves, the embargo will be held until all pipelined
+    // calls (including this one) have been resolved.
+    const parentEntry = this.imports[id];
+    let pipelineResolver: PromiseWithResolvers<void> | undefined;
+    if (parentEntry && !parentEntry.resolution) {
+      pipelineResolver = parentEntry.registerPipelinedCall();
+    }
+
     let entry = new ImportTableEntry(this, this.imports.length, false);
     this.imports.push(entry);
+
+    // When this pipelined call's result is resolved, signal the parent's embargo handler
+    if (pipelineResolver) {
+      entry.onResolved(() => pipelineResolver!.resolve());
+    }
+
     return new RpcImportHook(/*isPromise=*/true, entry);
   }
 
@@ -570,8 +868,21 @@ class RpcSessionImpl implements Importer, Exporter {
 
     this.send(["push", value]);
 
+    // Register this pipelined call with the parent import for embargo handling.
+    const parentEntry = this.imports[id];
+    let pipelineResolver: PromiseWithResolvers<void> | undefined;
+    if (parentEntry && !parentEntry.resolution) {
+      pipelineResolver = parentEntry.registerPipelinedCall();
+    }
+
     let entry = new ImportTableEntry(this, this.imports.length, false);
     this.imports.push(entry);
+
+    // When this pipelined call's result is resolved, signal the parent's embargo handler
+    if (pipelineResolver) {
+      entry.onResolved(() => pipelineResolver!.resolve());
+    }
+
     return new RpcImportHook(/*isPromise=*/true, entry);
   }
 
@@ -598,9 +909,26 @@ class RpcSessionImpl implements Importer, Exporter {
       try {
         this.transport.send(JSON.stringify(["abort", Devaluator
             .devaluate(error, undefined, this)]))
-            .catch(err => {});
+            .catch(err => {
+              // Sending abort message failed - report via onInternalError callback if provided
+              if (this.options.onInternalError) {
+                try {
+                  this.options.onInternalError(err instanceof Error ? err : new Error(String(err)));
+                } catch {
+                  // Ignore errors from the callback itself to prevent infinite loops
+                }
+              }
+            });
       } catch (err) {
-        // ignore, probably the whole reason we're aborting is because the transport is broken
+        // Serialization failed - report via onInternalError callback if provided
+        // This probably means the error itself couldn't be serialized (e.g., circular reference)
+        if (this.options.onInternalError) {
+          try {
+            this.options.onInternalError(err instanceof Error ? err : new Error(String(err)));
+          } catch {
+            // Ignore errors from the callback itself to prevent infinite loops
+          }
+        }
       }
     }
 

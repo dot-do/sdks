@@ -381,3 +381,127 @@ Given that:
 - Avoids conflicts with existing implementations
 - Provides a consistent naming pattern across all registries
 - Aligns with the existing package naming strategy in this document
+
+## Package Name Verification Report (2026-01-12)
+
+This section documents the results of package name availability verification for issue `dot-do-capnweb-52f`.
+
+### npm (npmjs.com)
+
+| Package Name | Status | Details |
+|--------------|--------|---------|
+| `@dotdo/capnweb` | LIKELY AVAILABLE | No search results found for @dotdo scope packages; scope needs to be created/claimed |
+| `@dotdo/rpc` | LIKELY AVAILABLE | Same as above - @dotdo organization scope not found in search |
+| `@dotdo/oauth` | LIKELY AVAILABLE | Same as above |
+| `capnweb` | TAKEN | Cloudflare official package (v0.1.0) - JavaScript/TypeScript RPC library |
+
+**Action Required:**
+1. Create `@dotdo` organization on npmjs.com if not already owned
+2. Reserve `@dotdo/capnweb`, `@dotdo/rpc`, `@dotdo/oauth` scoped packages
+3. Scoped packages require `--access public` on first publish
+
+### PyPI (pypi.org)
+
+| Package Name | Status | Details |
+|--------------|--------|---------|
+| `capnweb-do` | AVAILABLE | Not found in PyPI registry |
+| `rpc-do` | AVAILABLE | Not found in PyPI registry |
+| `oauth-do` | AVAILABLE | Not found in PyPI registry |
+| `platform-do` | AVAILABLE | Not found in PyPI registry |
+| `capnweb` | TAKEN | Abilian SAS (v0.1.0) - Python Cap'n Web implementation |
+| `py-capnweb` | TAKEN | Abilian SAS (v0.5.0) - Same project, alternate package |
+
+**Action Required:**
+1. Publish placeholder packages immediately to reserve names
+2. All four `-do` suffixed names appear available
+
+### crates.io (Rust)
+
+| Package Name | Status | Details |
+|--------------|--------|---------|
+| `capnweb-do` | AVAILABLE | Not found in crates.io registry |
+| `rpc-do` | AVAILABLE | Not found in crates.io registry |
+| `oauth-do` | AVAILABLE | Not found in crates.io registry |
+| `platform-do` | AVAILABLE | Not found in crates.io registry |
+| `capnweb-server` | TAKEN | currentspace - Server implementation |
+| `capnweb-transport` | TAKEN | currentspace - Transport layer |
+
+**Action Required:**
+1. Publish placeholder crates to reserve names
+2. The `capnweb-*` namespace is in use by third-party implementations
+
+### Go Modules (pkg.go.dev)
+
+| Import Path | Status | Details |
+|-------------|--------|---------|
+| `go.capnweb.do` | REQUIRES SETUP | Custom domain vanity import pattern |
+| `go.rpc.do` | REQUIRES SETUP | Custom domain vanity import pattern |
+| `go.oauth.do` | REQUIRES SETUP | Custom domain vanity import pattern |
+
+**Action Required:**
+1. Set up vanity import handlers on each subdomain (go.*.do)
+2. Deploy Cloudflare Workers with `<meta name="go-import">` tags
+3. No package registration needed - Go uses domain-based imports
+
+### Summary Table
+
+| Registry | Available Names | Taken Names | Action |
+|----------|-----------------|-------------|--------|
+| **npm** | @dotdo/capnweb, @dotdo/rpc, @dotdo/oauth | capnweb (Cloudflare) | Create @dotdo org, publish scoped packages |
+| **PyPI** | capnweb-do, rpc-do, oauth-do, platform-do | capnweb (Abilian) | Publish placeholders immediately |
+| **crates.io** | capnweb-do, rpc-do, oauth-do, platform-do | capnweb-server, capnweb-transport | Publish placeholders immediately |
+| **Go** | go.capnweb.do, go.rpc.do, go.oauth.do | N/A | Deploy vanity import workers |
+
+### Recommendations
+
+1. **Reserve Immediately:**
+   - All `-do` suffixed names on PyPI and crates.io are available and should be reserved with placeholder packages
+   - Create @dotdo organization on npm and publish scoped packages
+
+2. **Use Scoped Packages on npm:**
+   - Since `capnweb` is taken by Cloudflare, use `@dotdo/capnweb` for our fork/implementation
+   - This provides clear namespace separation and branding
+
+3. **Domain-Based Go Modules:**
+   - No registration needed; deploy vanity import handlers
+   - Example: `go.rpc.do` redirects to `github.com/dot-do/rpc`
+
+4. **Consistent Naming:**
+   - PyPI/crates.io: Use `{name}-do` pattern
+   - npm: Use `@dotdo/{name}` scoped pattern
+   - Go: Use `go.{name}.do` vanity import pattern
+
+### Placeholder Package Template
+
+For reserving names, publish minimal packages:
+
+**PyPI (pyproject.toml):**
+```toml
+[project]
+name = "rpc-do"
+version = "0.0.1"
+description = "DotDo RPC SDK for Python - Coming Soon"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+```
+
+**crates.io (Cargo.toml):**
+```toml
+[package]
+name = "rpc-do"
+version = "0.0.1"
+edition = "2021"
+description = "DotDo RPC SDK for Rust - Coming Soon"
+license = "MIT"
+```
+
+**npm (package.json):**
+```json
+{
+  "name": "@dotdo/rpc",
+  "version": "0.0.1",
+  "description": "DotDo RPC SDK - Coming Soon",
+  "license": "MIT"
+}
+```
