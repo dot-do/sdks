@@ -1,6 +1,6 @@
 {
   "name": "oauth.do",
-  "version": "0.1.17",
+  "version": "0.4.0",
   "description": "OAuth authentication SDK and CLI for org.ai identity",
   "type": "module",
   "main": "./dist/index.js",

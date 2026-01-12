@@ -1,6 +1,6 @@
 name := "oauth-do"
 organization := "do.oauth"
-version := "0.1.0"
+version := "0.4.0"
 scalaVersion := "3.3.1"
 
 libraryDependencies ++= Seq(

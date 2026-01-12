@@ -39,7 +39,13 @@
     "test:server:start": "tsx test/server/server.ts &",
     "test:integration": "vitest run --config test/integration/vitest.config.ts",
     "test:integration:watch": "vitest --config test/integration/vitest.config.ts",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "release": "./scripts/release.sh",
+    "release:dry-run": "./scripts/release.sh --dry-run",
+    "release:version": "./scripts/release.sh",
+    "version:sync": "./scripts/sync-versions.sh",
+    "version:check": "./scripts/publish/check-versions.sh",
+    "publish:all": "./scripts/publish/publish-all.sh"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.5.2",
