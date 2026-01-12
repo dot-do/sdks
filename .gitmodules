@@ -1,0 +1,6 @@
+[submodule "sdks/mongo"]
+	path = sdks/mongo
+	url = https://github.com/dot-do/mongo.git
+[submodule "sdks/kafka"]
+	path = sdks/kafka
+	url = https://github.com/dot-do/kafka.git
