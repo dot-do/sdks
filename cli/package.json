@@ -1,0 +1,42 @@
+{
+  "name": "dotdo",
+  "version": "0.1.0",
+  "description": "CLI tool for scaffolding new .do domain repos",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "dotdo": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "template"
+  ],
+  "scripts": {
+    "build": "tsc && npm run copy-template",
+    "copy-template": "rm -rf template && cp -r ../template .",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist template",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "dotdo",
+    "cli",
+    "scaffold",
+    "rpc",
+    "template"
+  ],
+  "author": "DotDo",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dot-do/rpc"
+  },
+  "homepage": "https://github.com/dot-do/rpc/tree/main/cli#readme"
+}

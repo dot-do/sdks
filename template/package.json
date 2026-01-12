@@ -1,0 +1,29 @@
+{
+  "name": "{{name.do}}",
+  "version": "0.1.0",
+  "description": "{{Name}} API for DotDo Platform",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "dev": "npm run dev --workspace=packages/typescript",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "keywords": [
+    "dotdo",
+    "{{name}}",
+    "rpc",
+    "api"
+  ],
+  "author": "DotDo",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dot-do/{{name}}"
+  },
+  "homepage": "https://{{name}}.do"
+}

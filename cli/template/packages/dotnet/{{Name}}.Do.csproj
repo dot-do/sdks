@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>{{Name}}.Do</RootNamespace>
+
+    <!-- Package Information -->
+    <PackageId>{{Name}}.Do</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>DotDo</Authors>
+    <Company>DotDo</Company>
+    <Description>{{Name}}.do SDK - {{description}}</Description>
+    <PackageTags>{{name}};rpc;dotdo;sdk</PackageTags>
+    <PackageProjectUrl>https://{{name}}.do</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/dot-do/{{name}}</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Rpc.Do" Version="0.1.0" />
+  </ItemGroup>
+
+</Project>

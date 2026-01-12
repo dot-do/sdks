@@ -1,0 +1,19 @@
+name: {{name}}_do
+description: "{{Name}}.do SDK - {{description}}"
+version: 0.1.0
+homepage: https://{{name}}.do
+repository: https://github.com/dot-do/{{name}}
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  rpc_do: ^0.1.0
+  http: ^1.1.0
+  web_socket_channel: ^2.4.0
+  meta: ^1.9.0
+
+dev_dependencies:
+  test: ^1.24.0
+  lints: ^3.0.0
+  yaml: ^3.1.0

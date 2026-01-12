@@ -1,0 +1,24 @@
+name: {{name}}_do
+version: 0.1.0
+
+description: |
+  {{description}}
+
+authors:
+  - DotDo <team@dotdo.dev>
+
+license: MIT
+
+crystal: ">= 1.10.0"
+
+dependencies:
+  rpc_do:
+    github: dot-do/rpc-crystal
+    version: ~> 0.1.0
+
+development_dependencies:
+  ameba:
+    github: crystal-ameba/ameba
+    version: ~> 1.5
+
+repository: https://github.com/dot-do/{{name}}
