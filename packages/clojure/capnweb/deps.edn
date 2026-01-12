@@ -25,7 +25,7 @@
 
   :conformance
   {:extra-paths ["test"]
-   :main-opts   ["-m" "com.dotdo.capnweb-test"]}
+   :main-opts   ["-m" "do.capnweb-test"]}
 
   :dev
   {:extra-paths ["dev"]

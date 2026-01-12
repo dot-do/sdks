@@ -1,5 +1,5 @@
 {
-    "name": "dotdo/rpc",
+    "name": "rpc.do/sdk",
     "description": "RPC client utilities for DotDo platform",
     "type": "library",
     "license": "MIT",

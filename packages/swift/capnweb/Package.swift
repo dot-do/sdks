@@ -4,7 +4,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "DotDoCapnWeb",
+    name: "CapnWebDo",
     platforms: [
         .macOS(.v13),
         .iOS(.v16),
@@ -13,8 +13,8 @@ let package = Package(
     ],
     products: [
         .library(
-            name: "DotDoCapnWeb",
-            targets: ["DotDoCapnWeb"]
+            name: "CapnWebDo",
+            targets: ["CapnWebDo"]
         ),
     ],
     dependencies: [
@@ -25,13 +25,13 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "DotDoCapnWeb",
+            name: "CapnWebDo",
             dependencies: []
         ),
         .testTarget(
-            name: "DotDoCapnWebTests",
+            name: "CapnWebDoTests",
             dependencies: [
-                "DotDoCapnWeb",
+                "CapnWebDo",
                 "Yams",
                 .product(name: "Testing", package: "swift-testing"),
             ]

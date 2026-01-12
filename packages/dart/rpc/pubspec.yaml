@@ -1,4 +1,4 @@
-name: dotdo_rpc
+name: rpc_do
 description: Lightweight RPC client for DotDo services with functional transformations and promise pipelining.
 version: 0.1.0
 homepage: https://do.md

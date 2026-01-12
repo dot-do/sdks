@@ -5,7 +5,7 @@ plugins {
     `maven-publish`
 }
 
-group = "com.dotdo"
+group = "do.rpc"
 version = "0.1.0"
 
 kotlin {
@@ -42,8 +42,8 @@ tasks.test {
 publishing {
     publications {
         create<MavenPublication>("maven") {
-            groupId = "com.dotdo"
-            artifactId = "rpc"
+            groupId = "do.rpc"
+            artifactId = "sdk"
             from(components["java"])
         }
     }

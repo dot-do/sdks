@@ -1,5 +1,5 @@
 {
-    "name": "dotdo/capnweb",
+    "name": "capnweb.do/sdk",
     "description": "Capability-based RPC SDK for PHP with promise pipelining",
     "type": "library",
     "license": "MIT",

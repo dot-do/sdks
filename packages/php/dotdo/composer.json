@@ -1,5 +1,5 @@
 {
-    "name": "dotdo/dotdo",
+    "name": "platform.do/sdk",
     "description": "DotDo platform SDK for PHP - authentication, connection pooling, and retry logic",
     "type": "library",
     "license": "MIT",
@@ -19,8 +19,8 @@
     "require": {
         "php": "^8.2",
         "ext-json": "*",
-        "dotdo/rpc": "^1.0",
-        "dotdo/capnweb": "^1.0"
+        "rpc.do/sdk": "^1.0",
+        "capnweb.do/sdk": "^1.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^10.5",

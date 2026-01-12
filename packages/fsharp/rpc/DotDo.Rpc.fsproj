@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
-    <PackageId>DotDo.Rpc</PackageId>
+    <PackageId>Rpc.Do</PackageId>
     <Version>0.1.0</Version>
     <Authors>DotDo</Authors>
     <Description>F# RPC primitives and server-side mapping for DotDo platform</Description>

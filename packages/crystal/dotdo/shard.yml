@@ -1,4 +1,4 @@
-name: dotdo
+name: platform-do
 version: 0.1.0
 description: DotDo Platform SDK for Crystal - auth, connection pooling, and retry logic
 
@@ -10,9 +10,9 @@ license: MIT
 crystal: ">= 1.10.0"
 
 dependencies:
-  dotdo-capnweb:
+  capnweb-do:
     path: ../capnweb
-  dotdo-rpc:
+  rpc-do:
     path: ../rpc
 
 development_dependencies:

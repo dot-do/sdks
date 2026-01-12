@@ -4,7 +4,7 @@
  {org.clojure/clojure        {:mvn/version "1.11.1"}
 
   ;; DotDo RPC (local dependency, includes capnweb transitively)
-  com.dotdo/rpc              {:local/root "../rpc"}
+  do.rpc/sdk                 {:local/root "../rpc"}
 
   ;; Async primitives - core.async for channels and go blocks
   org.clojure/core.async     {:mvn/version "1.6.681"}

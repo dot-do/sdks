@@ -24,4 +24,4 @@ task conformance, "Run conformance tests with server":
   exec "nim c -r -d:release tests/test_conformance.nim"
 
 task docs, "Generate documentation":
-  exec "nim doc --project --index:on src/dotdocapnweb.nim"
+  exec "nim doc --project --index:on src/capnwebdo.nim"

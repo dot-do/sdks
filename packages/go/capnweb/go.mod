@@ -1,4 +1,4 @@
-module go.dotdo.dev/capnweb
+module go.capnweb.do
 
 go 1.21
 

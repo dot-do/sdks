@@ -34,6 +34,8 @@
     "test:all": "tsx scripts/test-all.ts",
     "test:lang": "tsx scripts/test-all.ts",
     "test:report": "tsx scripts/generate-report.ts",
+    "test:server": "tsx test/server/server.ts",
+    "test:server:start": "tsx test/server/server.ts &",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {

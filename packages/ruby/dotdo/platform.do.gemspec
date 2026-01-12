@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 Gem::Specification.new do |spec|
-  spec.name          = 'dotdo'
+  spec.name          = 'platform.do'
   spec.version       = '0.1.0'
   spec.authors       = ['DotDo Team']
   spec.email         = ['team@dotdo.dev']
@@ -27,7 +27,7 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   # Runtime dependencies
-  spec.add_dependency 'dotdo-rpc', '~> 0.1'
-  spec.add_dependency 'dotdo-capnweb', '~> 0.1'
+  spec.add_dependency 'rpc.do', '~> 0.1'
+  spec.add_dependency 'capnweb.do', '~> 0.1'
   spec.add_dependency 'connection_pool', '~> 2.4'
 end

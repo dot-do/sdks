@@ -5,9 +5,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>12.0</LangVersion>
-    <PackageId>DotDo.Rpc</PackageId>
-    <RootNamespace>DotDo.Rpc</RootNamespace>
-    <AssemblyName>DotDo.Rpc</AssemblyName>
+    <PackageId>Rpc.Do</PackageId>
+    <RootNamespace>Rpc.Do</RootNamespace>
+    <AssemblyName>Rpc.Do</AssemblyName>
     <Version>0.1.0</Version>
     <Authors>DotDo Team</Authors>
     <Description>RPC client for DotDo platform - LINQ-style pipelining with Select() for server-side mapping</Description>

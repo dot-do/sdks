@@ -1,8 +1,8 @@
-module go.dotdo.dev/dotdo
+module go.platform.do
 
 go 1.21
 
 require (
-	go.dotdo.dev/capnweb v0.0.0
-	go.dotdo.dev/rpc v0.0.0
+	go.capnweb.do v0.0.0
+	go.rpc.do v0.0.0
 )

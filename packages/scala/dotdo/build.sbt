@@ -1,10 +1,10 @@
 ThisBuild / scalaVersion := "3.3.3"
-ThisBuild / organization := "com.dotdo"
+ThisBuild / organization := "do.platform"
 ThisBuild / version := "0.1.0-SNAPSHOT"
 
 lazy val root = (project in file("."))
   .settings(
-    name := "core",
+    name := "sdk",
 
     // Core dependencies
     libraryDependencies ++= Seq(

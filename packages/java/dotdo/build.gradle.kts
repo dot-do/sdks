@@ -4,15 +4,15 @@ plugins {
     `maven-publish`
 }
 
-group = "com.dotdo"
+group = "do.platform"
 version = "0.1.0"
 
 // Maven artifact configuration
 publishing {
     publications {
         create<MavenPublication>("maven") {
-            groupId = "com.dotdo"
-            artifactId = "core"
+            groupId = "do.platform"
+            artifactId = "sdk"
             from(components["java"])
         }
     }

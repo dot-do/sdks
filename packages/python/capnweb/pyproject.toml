@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "dotdo-capnweb"
+name = "capnweb-do"
 version = "0.1.0"
 description = "DotDo Cap'n Web SDK - Capability-based RPC with Promise Pipelining for Python"
 readme = "README.md"
@@ -37,7 +37,7 @@ test = [
     "pyyaml>=6.0",
 ]
 dev = [
-    "dotdo-capnweb[test]",
+    "capnweb-do[test]",
     "mypy>=1.8.0",
     "ruff>=0.2.0",
 ]

@@ -1,27 +1,27 @@
 [package]
-name = "dotdo-rpc"
+name = "rpc-do"
 version = "0.1.0"
 edition = "2021"
-description = "DotDo RPC client - High-level RPC abstraction for DotDo services"
+description = "RPC-DO SDK - High-performance capability-based RPC client for Rust"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/dotdo-ai/capnweb"
-keywords = ["dotdo", "rpc", "client", "async"]
+keywords = ["rpc", "websocket", "async", "capability"]
 categories = ["network-programming", "asynchronous"]
 
 [lib]
-name = "dotdo_rpc"
+name = "rpc_do"
 path = "src/lib.rs"
 
 [features]
-default = ["tokio"]
-tokio = ["dotdo-capnweb/tokio"]
+default = ["tokio-runtime"]
+tokio-runtime = []
 
 [dependencies]
-# Core Cap'n Web implementation
-dotdo-capnweb = { path = "../capnweb" }
-
 # Async runtime
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+
+# WebSocket transport
+tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -32,6 +32,26 @@ thiserror = "1"
 
 # Futures utilities
 futures = "0.3"
+futures-util = "0.3"
+
+# URL parsing
+url = "2"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+# Testing
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
+
+# YAML parsing for conformance tests
+serde_yaml = "0.9"
+
+# Pretty assertions for test output
+pretty_assertions = "1"
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"
+
+[[test]]
+name = "client"
+path = "tests/client.rs"

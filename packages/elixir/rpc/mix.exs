@@ -6,7 +6,7 @@ defmodule DotDo.Rpc.MixProject do
 
   def project do
     [
-      app: :dotdo_rpc,
+      app: :rpc_do,
       version: @version,
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,

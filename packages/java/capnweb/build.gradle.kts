@@ -4,15 +4,15 @@ plugins {
     `maven-publish`
 }
 
-group = "com.dotdo"
+group = "do.capnweb"
 version = "0.1.0"
 
 // Maven artifact configuration
 publishing {
     publications {
         create<MavenPublication>("maven") {
-            groupId = "com.dotdo"
-            artifactId = "capnweb"
+            groupId = "do.capnweb"
+            artifactId = "sdk"
             from(components["java"])
         }
     }

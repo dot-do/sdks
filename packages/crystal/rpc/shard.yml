@@ -1,4 +1,4 @@
-name: dotdo-rpc
+name: rpc-do
 version: 0.1.0
 description: DotDo RPC utilities for Crystal - server-side remap and data transformations
 
@@ -10,7 +10,7 @@ license: MIT
 crystal: ">= 1.10.0"
 
 dependencies:
-  dotdo-capnweb:
+  capnweb-do:
     path: ../capnweb
 
 development_dependencies:

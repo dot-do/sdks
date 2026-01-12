@@ -18,4 +18,4 @@ task test, "Run tests":
   exec "nim c -r tests/test_rpc.nim"
 
 task docs, "Generate documentation":
-  exec "nim doc --project --index:on src/dotdorpc.nim"
+  exec "nim doc --project --index:on src/rpcdo.nim"

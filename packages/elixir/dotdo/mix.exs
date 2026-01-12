@@ -6,7 +6,7 @@ defmodule DotDo.MixProject do
 
   def project do
     [
-      app: :dotdo,
+      app: :platform_do,
       version: @version,
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,

@@ -4,7 +4,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "DotDoRpc",
+    name: "RpcDo",
     platforms: [
         .macOS(.v13),
         .iOS(.v16),
@@ -13,19 +13,19 @@ let package = Package(
     ],
     products: [
         .library(
-            name: "DotDoRpc",
-            targets: ["DotDoRpc"]
+            name: "RpcDo",
+            targets: ["RpcDo"]
         ),
     ],
     dependencies: [],
     targets: [
         .target(
-            name: "DotDoRpc",
+            name: "RpcDo",
             dependencies: []
         ),
         .testTarget(
-            name: "DotDoRpcTests",
-            dependencies: ["DotDoRpc"]
+            name: "RpcDoTests",
+            dependencies: ["RpcDo"]
         ),
     ]
 )

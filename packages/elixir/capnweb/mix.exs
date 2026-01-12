@@ -6,7 +6,7 @@ defmodule DotDo.CapnWeb.MixProject do
 
   def project do
     [
-      app: :dotdo_capnweb,
+      app: :capnweb_do,
       version: @version,
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,

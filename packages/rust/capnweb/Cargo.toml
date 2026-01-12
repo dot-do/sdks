@@ -1,5 +1,5 @@
 [package]
-name = "dotdo-capnweb"
+name = "capnweb-do"
 version = "0.1.0"
 edition = "2021"
 description = "DotDo Cap'n Web - Zero-cost capability-based RPC for Rust"
@@ -9,7 +9,7 @@ keywords = ["dotdo", "rpc", "capability", "websocket", "async"]
 categories = ["network-programming", "asynchronous"]
 
 [lib]
-name = "dotdo_capnweb"
+name = "capnweb_do"
 path = "src/lib.rs"
 
 [features]

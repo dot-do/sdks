@@ -4,7 +4,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "DotDo",
+    name: "PlatformDo",
     platforms: [
         .macOS(.v13),
         .iOS(.v16),
@@ -13,19 +13,19 @@ let package = Package(
     ],
     products: [
         .library(
-            name: "DotDo",
-            targets: ["DotDo"]
+            name: "PlatformDo",
+            targets: ["PlatformDo"]
         ),
     ],
     dependencies: [],
     targets: [
         .target(
-            name: "DotDo",
+            name: "PlatformDo",
             dependencies: []
         ),
         .testTarget(
-            name: "DotDoTests",
-            dependencies: ["DotDo"]
+            name: "PlatformDoTests",
+            dependencies: ["PlatformDo"]
         ),
     ]
 )

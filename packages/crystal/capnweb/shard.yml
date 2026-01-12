@@ -1,4 +1,4 @@
-name: dotdo-capnweb
+name: capnweb-do
 version: 0.1.0
 description: DotDo Cap'n Web RPC client for Crystal - capability-based RPC with pipelining
 

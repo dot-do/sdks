@@ -4,7 +4,7 @@
  {org.clojure/clojure        {:mvn/version "1.11.1"}
 
   ;; Cap'n Web core (local dependency)
-  com.dotdo/capnweb          {:local/root "../capnweb"}
+  do.capnweb/sdk             {:local/root "../capnweb"}
 
   ;; Async primitives
   manifold/manifold          {:mvn/version "0.4.2"}

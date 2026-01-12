@@ -1,7 +1,7 @@
 {
-  "name": "@dotdo/rpc",
+  "name": "rpc.do",
   "version": "0.1.0",
-  "description": "DotDo RPC Client - Type-safe remote procedure calls",
+  "description": "RPC.do SDK - Promise pipelining RPC for .do services",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -19,20 +19,28 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "rpc",
     "proxy",
-    "capnproto",
+    "pipelining",
+    "websocket",
     "dotdo"
   ],
   "author": "DotDo",
   "license": "MIT",
   "dependencies": {
-    "@dotdo/capnweb": "workspace:*"
+    "ws": "^8.18.0"
   },
   "devDependencies": {
-    "typescript": "^5.3.0"
+    "@types/node": "^20.10.0",
+    "@types/ws": "^8.5.10",
+    "js-yaml": "^4.1.0",
+    "@types/js-yaml": "^4.0.9",
+    "typescript": "^5.3.0",
+    "vitest": "^3.2.4"
   }
 }

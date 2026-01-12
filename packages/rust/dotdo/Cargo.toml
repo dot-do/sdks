@@ -1,5 +1,5 @@
 [package]
-name = "dotdo"
+name = "platform-do"
 version = "0.1.0"
 edition = "2021"
 description = "DotDo Platform SDK - Managed connections with auth, pooling, and retry logic"
@@ -9,16 +9,16 @@ keywords = ["dotdo", "platform", "sdk", "ai", "rpc"]
 categories = ["network-programming", "asynchronous", "api-bindings"]
 
 [lib]
-name = "dotdo"
+name = "platform_do"
 path = "src/lib.rs"
 
 [features]
 default = ["tokio"]
-tokio = ["dotdo-rpc/tokio"]
+tokio = ["rpc-do/tokio"]
 
 [dependencies]
 # RPC layer
-dotdo-rpc = { path = "../rpc" }
+rpc-do = { path = "../rpc" }
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }

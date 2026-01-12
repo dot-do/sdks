@@ -5,9 +5,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>12.0</LangVersion>
-    <PackageId>DotDo.CapnWeb</PackageId>
-    <RootNamespace>DotDo.CapnWeb</RootNamespace>
-    <AssemblyName>DotDo.CapnWeb</AssemblyName>
+    <PackageId>CapnWeb.Do</PackageId>
+    <RootNamespace>CapnWeb.Do</RootNamespace>
+    <AssemblyName>CapnWeb.Do</AssemblyName>
     <Version>0.1.0</Version>
     <Authors>DotDo Team</Authors>
     <Description>Zero-cost capability-based RPC for .NET - LINQ-style pipelining with Select() for server-side mapping</Description>
