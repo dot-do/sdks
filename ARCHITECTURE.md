@@ -2,6 +2,17 @@
 
 This document describes the layered package architecture for the DotDo RPC ecosystem across all supported languages.
 
+## Repository Structure
+
+The ecosystem spans two repositories:
+
+| Repository | Purpose | Contents |
+|------------|---------|----------|
+| **[dot-do/capnweb](https://github.com/dot-do/capnweb)** | Protocol implementation | Fork of cloudflare/capnweb + ports to 17 languages |
+| **[dot-do/sdks](https://github.com/dot-do/sdks)** | Higher-level SDKs | rpc.do, platform.do, oauth.do, domain SDKs |
+
+The capnweb implementations provide the low-level protocol, while this repo (sdks) provides the managed layers that build on top.
+
 ## Package Hierarchy
 
 ```
@@ -80,24 +91,29 @@ API-compatible wrappers that feel native to each ecosystem:
 
 ## Package Naming by Language
 
-| Language | capnweb | rpc | platform | domain |
-|----------|---------|-----|----------|--------|
-| **TypeScript** | `@dotdo/capnweb` | `@dotdo/rpc` | `dotdo` | `@dotdo/db` |
-| **Python** | `dotdo-capnweb` | `dotdo-rpc` | `dotdo` | `dotdo-db` |
-| **Rust** | `dotdo-capnweb` | `dotdo-rpc` | `dotdo` | `dotdo-db` |
-| **Go** | `go.dotdo.dev/capnweb` | `go.dotdo.dev/rpc` | `go.dotdo.dev/dotdo` | `go.dotdo.dev/db` |
-| **Ruby** | `dotdo-capnweb` | `dotdo-rpc` | `dotdo` | `dotdo-db` |
-| **Java** | `com.dotdo:capnweb` | `com.dotdo:rpc` | `com.dotdo:core` | `com.dotdo:db` |
-| **Kotlin** | `com.dotdo:capnweb` | `com.dotdo:rpc` | `com.dotdo:core` | `com.dotdo:db` |
-| **Scala** | `com.dotdo::capnweb` | `com.dotdo::rpc` | `com.dotdo::core` | `com.dotdo::db` |
-| **C#/.NET** | `DotDo.CapnWeb` | `DotDo.Rpc` | `DotDo` | `DotDo.Db` |
-| **F#** | `DotDo.CapnWeb` | `DotDo.Rpc` | `DotDo` | `DotDo.Db` |
-| **PHP** | `dotdo/capnweb` | `dotdo/rpc` | `dotdo/dotdo` | `dotdo/db` |
-| **Swift** | `DotDoCapnWeb` | `DotDoRpc` | `DotDo` | `DotDoDb` |
-| **Dart** | `dotdo_capnweb` | `dotdo_rpc` | `dotdo` | `dotdo_db` |
-| **Elixir** | `:dotdo_capnweb` | `:dotdo_rpc` | `:dotdo` | `:dotdo_db` |
-| **Clojure** | `com.dotdo/capnweb` | `com.dotdo/rpc` | `com.dotdo/core` | `com.dotdo/db` |
-| **Crystal** | `dotdo-capnweb` | `dotdo-rpc` | `dotdo` | `dotdo-db` |
+capnweb packages are published from [dot-do/capnweb](https://github.com/dot-do/capnweb).
+rpc.do and higher-level packages are published from this repo (dot-do/sdks).
+
+| Language | capnweb | rpc.do | platform.do | domain |
+|----------|---------|--------|-------------|--------|
+| **TypeScript** | `capnweb` (npm) | `rpc.do` | `dotdo` | `mongo.do` |
+| **Python** | `capnweb` (PyPI) | `rpc-do` | `dotdo` | `mongo-do` |
+| **Rust** | `capnweb` (crates) | `rpc-do` | `dotdo` | `mongo-do` |
+| **Go** | `go.capnweb.dev` | `go.rpc.do` | `go.dotdo.dev` | `go.mongo.do` |
+| **Ruby** | `capnweb` (gems) | `rpc.do` | `dotdo` | `mongo.do` |
+| **Java** | `dev.capnweb:capnweb` | `do.rpc:sdk` | `do.dotdo:sdk` | `do.mongo:sdk` |
+| **Kotlin** | `dev.capnweb:capnweb` | `do.rpc:sdk` | `do.dotdo:sdk` | `do.mongo:sdk` |
+| **Scala** | `dev.capnweb::capnweb` | `do.rpc::sdk` | `do.dotdo::sdk` | `do.mongo::sdk` |
+| **C#/.NET** | `CapnWeb` (NuGet) | `Rpc.Do` | `DotDo` | `Mongo.Do` |
+| **F#** | `CapnWeb` (NuGet) | `Rpc.Do` | `DotDo` | `Mongo.Do` |
+| **PHP** | `capnweb/capnweb` | `rpc.do/sdk` | `dotdo/sdk` | `mongo.do/sdk` |
+| **Swift** | `CapnWeb` (SPM) | `RpcDo` | `DotDo` | `MongoDo` |
+| **Dart** | `capnweb` (pub) | `rpc_do` | `dotdo` | `mongo_do` |
+| **Elixir** | `:capnweb` (hex) | `:rpc_do` | `:dotdo` | `:mongo_do` |
+| **Clojure** | `dev.capnweb/capnweb` | `do.rpc/sdk` | `do.dotdo/sdk` | `do.mongo/sdk` |
+| **Crystal** | `capnweb` (shards) | `rpc-do` | `dotdo` | `mongo-do` |
+| **Nim** | `capnweb` (nimble) | `rpcdo` | `dotdo` | `mongodo` |
+| **Deno** | `@capnweb/capnweb` | `@dotdo/rpc` | `@dotdo/dotdo` | `@dotdo/mongo` |
 | **Nim** | `dotdocapnweb` | `dotdorpc` | `dotdo` | `dotdodb` |
 
 ## Repository Structure
