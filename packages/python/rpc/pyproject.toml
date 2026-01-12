@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "rpc-do"
-version = "0.4.0"
+version = "0.1.0"
 description = "RPC-DO - Zero-schema RPC client for .do services"
 readme = "README.md"
 license = "MIT"

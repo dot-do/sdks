@@ -1,6 +1,6 @@
 name: platform_do
 description: Official DotDo platform SDK for Dart and Flutter. Authentication, connection pooling, and retry logic built-in.
-version: 0.4.0
+version: 0.1.0
 homepage: https://do.md
 repository: https://github.com/do-dot/capnweb/tree/main/packages/dart/dotdo
 documentation: https://do.md/docs/dart

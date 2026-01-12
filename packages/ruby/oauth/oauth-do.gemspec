@@ -4,7 +4,7 @@ require_relative "lib/oauth_do/version"
 
 Gem::Specification.new do |spec|
   spec.name = "oauth-do"
-  spec.version = '0.4.0'
+  spec.version = '0.1.0'
   spec.authors = ["OAuth.do"]
   spec.email = ["support@oauth.do"]
 

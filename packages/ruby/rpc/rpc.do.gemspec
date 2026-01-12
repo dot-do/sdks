@@ -2,7 +2,7 @@
 
 Gem::Specification.new do |spec|
   spec.name          = 'rpc.do'
-  spec.version = '0.4.0'
+  spec.version = '0.1.0'
   spec.authors       = ['DotDo Team']
   spec.email         = ['team@dotdo.dev']
 

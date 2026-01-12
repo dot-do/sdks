@@ -1,6 +1,6 @@
 name: capnweb_do
 description: Capability-based RPC for Dart and Flutter. One round-trip, infinite possibilities.
-version: 0.4.0
+version: 0.1.0
 homepage: https://do.md
 repository: https://github.com/do-dot/capnweb/tree/main/packages/dart
 documentation: https://do.md/docs/dart/capnweb

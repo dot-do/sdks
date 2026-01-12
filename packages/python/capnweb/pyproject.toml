@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "capnweb-do"
-version = "0.4.0"
+version = "0.1.0"
 description = "DotDo Cap'n Web SDK - Capability-based RPC with Promise Pipelining for Python"
 readme = "README.md"
 license = "MIT"
