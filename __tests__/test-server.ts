@@ -14,7 +14,6 @@
 
 import { WebSocketServer, AddressInfo } from 'ws'
 import type { TestProject } from 'vitest/node'
-import * as url from 'url'
 import { newWebSocketRpcSession, nodeHttpBatchRpcResponse } from '../src/index.js';
 import { TestTarget } from './test-util.js';
 import http from "node:http";
@@ -51,14 +50,21 @@ export async function setup(project: TestProject) {
   })
 
   // Listen on an ephemeral port for testing purposes.
-  httpServer.listen(0);
+  //
+  // IMPORTANT: We bind explicitly to '127.0.0.1' rather than allowing the default binding.
+  // Without this, Node.js binds to '::' (IPv6 any-address), which formats to '[::]:PORT'.
+  // While Chromium handles this correctly, Firefox and WebKit fail to connect to IPv6
+  // literal addresses in URLs, causing "NetworkError" and "Load failed" errors.
+  // See issue dot-do-capnweb-z3u for details.
+  //
+  // Using '127.0.0.1' ensures consistent behavior across all browser engines.
+  await new Promise<void>((resolve) => {
+    httpServer!.listen(0, '127.0.0.1', resolve);
+  });
   let addr = httpServer.address() as AddressInfo;
 
   // Provide the server address to tests.
-  //
-  // We use the Node-specific `url.format` here because it automatically handles adding brackets to
-  // IPv6 addresses. Unfortunately, the standard `URL` class doesn't seem to provide this.
-  project.provide("testServerHost", url.format({hostname: addr.address, port: addr.port}));
+  project.provide("testServerHost", `${addr.address}:${addr.port}`);
 }
 
 export async function teardown() {

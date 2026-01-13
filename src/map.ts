@@ -76,8 +76,9 @@ class MapBuilder implements Exporter {
 
   pushCall(hook: StubHook, path: PropertyPath, params: RpcPayload): StubHook {
     let devalued = Devaluator.devaluate(params.value, undefined, this, params);
-    // HACK: Since the args is an array, devaluator will wrap in a second array. Need to unwrap.
-    // TODO: Clean this up somehow.
+    // The devaluator wraps arrays in an outer array to escape them in the wire format.
+    // Since params.value is always an array, we unwrap the outer layer here.
+    // This is intentional and matches the deserialization logic in the Evaluator.
     devalued = (<Array<unknown>>devalued)[0];
 
     let subject = this.capture(hook.dup());
@@ -97,9 +98,9 @@ class MapBuilder implements Exporter {
       return hook.idx;
     }
 
-    // TODO: Well, the hooks passed in are always unique, so they'll never exist in captureMap.
-    //   I suppose this is a problem with RPC as well. We need a way to identify hooks that are
-    //   dupes of the same target.
+    // Note: Hooks passed in are always unique instances, so they won't match in captureMap.
+    // A future enhancement could provide a way to identify hooks that are duplicates of the
+    // same underlying target, which would enable deduplication across the RPC system as well.
     let result = this.captureMap.get(hook);
     if (result === undefined) {
       if (this.context.parent) {
@@ -127,9 +128,10 @@ class MapBuilder implements Exporter {
     //     using myTargetStub = new RpcStub(new MyRpcTarget());
     //     stub.map(x => { return x.doSomething(myTargetStub.dup()); })
     //
-    // TODO(someday): Consider carefully if the inline syntax is maybe OK. If so, perhaps the
-    //   serializer could try calling `getImport()` even for known-local hooks.
-    // TODO(someday): Do we need to support rpc-thenable somehow?
+    // Design note: Inline RpcTarget construction is not supported in mapper functions because
+    // the mapper is serialized and sent to the remote peer for execution. A future enhancement
+    // could potentially allow inline syntax by having the serializer call getImport() even for
+    // known-local hooks, or add support for rpc-thenable in this context.
     throw new Error(
         "Can't construct an RpcTarget or RPC callback inside a mapper function. Try creating a " +
         "new RpcStub outside the callback first, then using it inside the callback.");
@@ -146,7 +148,8 @@ class MapBuilder implements Exporter {
   }
 
   onSendError(error: Error): Error | void {
-    // TODO(someday): Can we use the error-sender hook from the RPC system somehow?
+    // Note: Error sending in mappers is currently a no-op. A future enhancement could integrate
+    // with the RPC system's error-sender hook for consistent error handling across contexts.
   }
 };
 
@@ -230,7 +233,7 @@ class MapVariableHook extends StubHook {
     // Probably never called but whatever.
   }
 
-  onBroken(callback: (error: any) => void): void {
+  onBroken(callback: (error: unknown) => void): void {
     throwMapperBuilderUseError();
   }
 }
@@ -299,9 +302,9 @@ class MapApplicator implements Importer {
 
 function applyMapToElement(input: unknown, parent: object | undefined, owner: RpcPayload | null,
                            captures: StubHook[], instructions: unknown[]): RpcPayload {
-  // TODO(perf): I wonder if we could use .fromAppParams() instead of .deepCopyFrom()? It
-  //   maybe wouldn't correctly handle the case of RpcTargets in the input, so we need a variant
-  //   which takes an `owner`, which does add some complexity.
+  // Performance note: Using deepCopyFrom() ensures correct handling of RpcTargets in the input.
+  // A potential optimization would use fromAppParams() with an owner parameter, but that adds
+  // complexity for handling embedded RpcTargets correctly.
   let inputHook = new PayloadStubHook(RpcPayload.deepCopyFrom(input, parent, owner));
   let mapper = new MapApplicator(captures, inputHook);
   try {
@@ -339,8 +342,9 @@ mapImpl.applyMap = (input: unknown, parent: object | undefined, owner: RpcPayloa
       result = applyMapToElement(input, parent, owner, captures, instructions);
     }
 
-    // TODO(perf): We should probably return a hook that allows pipelining but whose pull() doesn't
-    //   resolve until all promises in the payload have been substituted.
+    // Performance note: A future optimization could return a hook that allows pipelining while
+    // deferring pull() resolution until all promises in the payload have been substituted.
+    // Currently, the result is immediately available which works but may miss some optimization.
     return new PayloadStubHook(result);
   } finally {
     for (let cap of captures) {

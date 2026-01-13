@@ -705,3 +705,479 @@ platform.do ← rpc.do        # Optional: managed layer
 3. **Don't store tokens in code** - Use environment variables
 4. **Let keychain manage tokens** - Don't disable unless necessary
 5. **Use `ensureLoggedIn()`** - It handles all edge cases (expired, revoked, etc.)
+
+---
+
+## Internal Protocol Architecture
+
+This section documents the internal algorithms and design decisions within the Cap'n Web protocol implementation.
+
+### Module Structure and Dependencies
+
+The TypeScript implementation follows a layered module architecture:
+
+```
+src/
+├── index.ts          # Public API surface, re-exports, CORS handling
+├── rpc.ts            # RPC session management, message processing, embargo handling
+├── core.ts           # StubHook hierarchy, RpcPayload, RpcStub/RpcPromise proxies
+├── serialize.ts      # Evaluator/Devaluator for wire format conversion
+├── websocket.ts      # WebSocket transport implementation
+├── batch.ts          # HTTP batch transport implementation
+├── messageport.ts    # MessagePort transport (iframe communication)
+├── map.ts            # Server-side .map() implementation
+├── errors.ts         # Standardized error types and codes
+├── version.ts        # Protocol version negotiation
+├── types.ts          # Type definitions and branded types
+└── symbols.ts        # Internal symbols for Workers interop
+```
+
+**Dependency Graph:**
+
+```
+                    index.ts (public API)
+                        │
+        ┌───────────────┼───────────────┐
+        ▼               ▼               ▼
+  websocket.ts      batch.ts      messageport.ts
+        │               │               │
+        └───────────────┼───────────────┘
+                        ▼
+                     rpc.ts (session management)
+                        │
+        ┌───────────────┼───────────────┐
+        ▼               ▼               ▼
+    core.ts       serialize.ts       map.ts
+        │               │               │
+        └───────┬───────┘               │
+                ▼                       │
+            types.ts ◄──────────────────┘
+```
+
+### StubHook Hierarchy
+
+`StubHook` is the internal abstraction representing a remote or local capability reference:
+
+```
+StubHook (abstract base)
+├── ErrorStubHook          # Represents a permanently-failed stub
+├── PayloadStubHook        # Wraps an RpcPayload (resolved value)
+├── TargetStubHook         # Wraps a local RpcTarget
+├── PromiseStubHook        # Wraps a Promise<StubHook>
+├── RpcImportHook          # References an entry in the import table
+│   └── RpcMainHook        # Special hook for session's main import
+├── EmbargoedStubHook      # Maintains e-order during promise resolution
+└── EmbargoedCallStubHook  # Queued call during embargo period
+```
+
+**Key Methods:**
+
+| Method | Purpose |
+|--------|---------|
+| `call(path, args)` | Invoke a method at the given property path |
+| `get(path)` | Access a property, returning a promise for its value |
+| `map(path, captures, instructions)` | Apply server-side map operation |
+| `pull()` | Request the resolved payload (for promises) |
+| `dup()` | Create a reference-counted duplicate |
+| `dispose()` | Release the reference |
+| `onBroken(callback)` | Register disconnect notification |
+
+---
+
+## Protocol Details
+
+### Import/Export Table Lifecycle
+
+The protocol maintains two tables per session: **imports** (references to remote capabilities) and **exports** (references to local capabilities). These are mirrored between peers.
+
+**ID Assignment Strategy:**
+
+```
+         Client                          Server
+┌─────────────────────┐          ┌─────────────────────┐
+│  Imports Table      │          │  Exports Table      │
+│  (positive IDs)     │◄────────►│  (positive IDs)     │
+│  ID 1, 2, 3, ...    │          │  ID 1, 2, 3, ...    │
+├─────────────────────┤          ├─────────────────────┤
+│  Exports Table      │          │  Imports Table      │
+│  (negative IDs)     │◄────────►│  (negative IDs)     │
+│  ID -1, -2, -3, ... │          │  ID -1, -2, -3, ... │
+├─────────────────────┤          ├─────────────────────┤
+│  ID 0 = Main        │◄────────►│  ID 0 = Main        │
+└─────────────────────┘          └─────────────────────┘
+```
+
+- **ID 0**: Reserved for the bootstrap/main interface
+- **Positive IDs**: Assigned by the importer for push results and received exports
+- **Negative IDs**: Assigned by the exporter for new exports it initiates
+
+**Lifecycle States:**
+
+```
+                      ┌──────────────────┐
+                      │    Created       │
+                      │  (push/export)   │
+                      └────────┬─────────┘
+                               │
+                 ┌─────────────┼─────────────┐
+                 │             │             │
+                 ▼             ▼             ▼
+          ┌──────────┐  ┌───────────┐  ┌───────────┐
+          │ Pending  │  │  Pulled   │  │ Resolved  │
+          │(waiting) │  │(awaiting) │  │ (ready)   │
+          └────┬─────┘  └─────┬─────┘  └─────┬─────┘
+               │              │              │
+               └──────────────┼──────────────┘
+                              ▼
+                      ┌──────────────────┐
+                      │    Released      │
+                      │  (ref count 0)   │
+                      └──────────────────┘
+```
+
+### Reference Counting Semantics
+
+Each import/export entry maintains a reference count to prevent premature disposal:
+
+```typescript
+// ImportTableEntry tracks both local and remote reference counts
+class ImportTableEntry {
+  localRefcount: number = 0;   // How many local StubHooks reference this
+  remoteRefcount: number = 1;  // How many times peer has exported this ID
+}
+```
+
+**Reference Count Operations:**
+
+| Operation | Local Count | Remote Count | Wire Message |
+|-----------|-------------|--------------|--------------|
+| Receive export | +1 | (set by peer) | - |
+| Create local dup | +1 | - | - |
+| Dispose local hook | -1 | - | - |
+| Send release | - | -N | `["release", id, N]` |
+| Receive release | (dispose when 0) | -N | - |
+
+**Why Remote Refcount Matters:**
+
+A race condition can occur when the exporter sends the same ID multiple times before receiving a release:
+
+```
+Peer A                                 Peer B
+   │                                      │
+   │ ── export ID=-1 ──────────────────►  │  remoteRefcount = 1
+   │ ── export ID=-1 (in another msg) ─►  │  remoteRefcount = 2
+   │                                      │
+   │ ◄── release ID=-1, count=1 ────────  │  (B disposed first ref)
+   │                                      │
+   │  (A decrements: 2-1=1, not zero)     │
+   │  (A keeps the export alive)          │
+```
+
+### Embargo Protocol
+
+The **embargo** mechanism ensures **E-order (event order)** when promises resolve. Without embargo, a race condition could occur:
+
+**The Problem:**
+
+```
+Client                    Introducer                   Target
+   │                          │                           │
+   │ ── call(promise.foo) ──► │                           │
+   │    (pipelined through    │ ── forward call ────────► │
+   │     introducer)          │                           │
+   │                          │                           │
+   │ ◄── resolve(promise) ──  │                           │
+   │    = capability to       │                           │
+   │      Target              │                           │
+   │                          │                           │
+   │ ── call(resolved.bar) ──────────────────────────────►│
+   │    (direct to target)    │                           │
+   │                          │                           │
+   ▼                          ▼                           ▼
+```
+
+If the direct call `bar()` arrives at Target before the forwarded call `foo()`, they execute out of order, violating E-order.
+
+**The Solution - Embargo:**
+
+```typescript
+// ImportTableEntry maintains pending pipelined calls
+private pendingPipelinedCalls?: PromiseWithResolvers<void>[];
+
+// When a promise resolves with pending pipelined calls:
+resolve(resolution: StubHook) {
+  if (this.pendingPipelinedCalls && this.pendingPipelinedCalls.length > 0) {
+    // Wrap resolution in embargo that waits for all pipelined calls
+    const embargoPromise = Promise.allSettled(
+      this.pendingPipelinedCalls.map(r => r.promise)
+    ).then(() => resolution);
+
+    this.resolution = new EmbargoedStubHook(embargoPromise, resolution);
+  }
+}
+```
+
+**Embargo Behavior:**
+
+1. Before resolution: Calls are sent through the introducer (pipelined)
+2. At resolution: Register all pending pipelined calls for embargo
+3. During embargo: New calls queue behind the embargo promise
+4. Embargo lifts: When all pipelined calls have been resolved
+5. After embargo: Calls go directly to the resolved target
+
+### E-Order Guarantees
+
+**E-order** (event order) is a fundamental guarantee: if events A and B are ordered (A happens-before B) from one actor's perspective, all actors will observe them in that order.
+
+**Implementation Strategies:**
+
+1. **PromiseStubHook - Local Promise Ordering:**
+   ```typescript
+   // Even if resolution is available, chain through the promise
+   // to maintain ordering relative to earlier calls
+   call(path, args) {
+     args.ensureDeepCopied();  // Can't serialize yet, must deep-copy
+     return new PromiseStubHook(this.promise.then(hook => hook.call(path, args)));
+   }
+   ```
+
+2. **EmbargoedStubHook - Cross-Network Ordering:**
+   ```typescript
+   call(path, args) {
+     if (this.embargoLifted) {
+       return this.resolution.call(path, args);  // Direct path
+     }
+     // Queue behind embargo to maintain e-order
+     return new EmbargoedCallStubHook(
+       this.embargoPromise.then(hook => hook.call(path, args))
+     );
+   }
+   ```
+
+3. **Payload Deep-Copy Before Async:**
+   ```typescript
+   // Once call() returns synchronously, args must not be touched
+   // If we can't serialize immediately, deep-copy now
+   args.ensureDeepCopied();
+   ```
+
+---
+
+## Message Flow
+
+### Request/Response Flow
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                         CLIENT                                        │
+│  ┌─────────────────────────────────────────────────────────────────┐ │
+│  │  const result = await api.getData(123)                          │ │
+│  └──────────────────────────┬──────────────────────────────────────┘ │
+│                             │                                         │
+│  ┌──────────────────────────▼──────────────────────────────────────┐ │
+│  │  RpcStub (Proxy)                                                │ │
+│  │  - Intercepts method call                                       │ │
+│  │  - Creates RpcPayload from args [123]                           │ │
+│  │  - Calls hook.call(["getData"], payload)                        │ │
+│  └──────────────────────────┬──────────────────────────────────────┘ │
+│                             │                                         │
+│  ┌──────────────────────────▼──────────────────────────────────────┐ │
+│  │  RpcSession.sendCall()                                          │ │
+│  │  - Devaluates payload to wire format                            │ │
+│  │  - Assigns new import ID                                        │ │
+│  │  - Sends: ["push", ["pipeline", 0, ["getData"], [[123]]]]       │ │
+│  │  - Creates ImportTableEntry for result                          │ │
+│  └──────────────────────────┬──────────────────────────────────────┘ │
+└──────────────────────────────┼───────────────────────────────────────┘
+                               │
+                               │  WebSocket / HTTP
+                               ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                         SERVER                                        │
+│  ┌──────────────────────────────────────────────────────────────────┐│
+│  │  RpcSession.processMessage()                                     ││
+│  │  - Parses JSON message                                           ││
+│  │  - Validates message structure                                   ││
+│  │  - Routes to "push" handler                                      ││
+│  └──────────────────────────┬───────────────────────────────────────┘│
+│                             │                                         │
+│  ┌──────────────────────────▼──────────────────────────────────────┐ │
+│  │  Evaluator.evaluate()                                           │ │
+│  │  - Converts wire format to RpcPayload                           │ │
+│  │  - Looks up export 0 (main interface)                           │ │
+│  │  - Evaluates ["pipeline", ...] → creates call chain             │ │
+│  └──────────────────────────┬──────────────────────────────────────┘ │
+│                             │                                         │
+│  ┌──────────────────────────▼──────────────────────────────────────┐ │
+│  │  PayloadStubHook.call() → Application Method                    │ │
+│  │  - Follows property path to find function                       │ │
+│  │  - Delivers payload via payload.deliverCall(fn, thisArg)        │ │
+│  │  - Awaits result                                                │ │
+│  └──────────────────────────┬──────────────────────────────────────┘ │
+│                             │                                         │
+│  ┌──────────────────────────▼──────────────────────────────────────┐ │
+│  │  ensureResolvingExport()                                        │ │
+│  │  - Calls hook.pull() on the result                              │ │
+│  │  - Devaluates result to wire format                             │ │
+│  │  - Sends: ["resolve", exportId, resultExpression]               │ │
+│  └──────────────────────────┬───────────────────────────────────────┘│
+└──────────────────────────────┼───────────────────────────────────────┘
+                               │
+                               │  WebSocket / HTTP
+                               ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                         CLIENT                                        │
+│  ┌──────────────────────────────────────────────────────────────────┐│
+│  │  RpcSession.processMessage() - "resolve" handler                 ││
+│  │  - Evaluates result expression                                   ││
+│  │  - Calls ImportTableEntry.resolve(hook)                          ││
+│  │  - Resolves the pending promise                                  ││
+│  │  - Sends: ["release", importId, 1]                               ││
+│  └──────────────────────────┬───────────────────────────────────────┘│
+│                             │                                         │
+│  ┌──────────────────────────▼──────────────────────────────────────┐ │
+│  │  RpcPayload.deliverResolve()                                    │ │
+│  │  - Substitutes any embedded promises with resolutions           │ │
+│  │  - Returns final value to application                           │ │
+│  └──────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### Promise Pipelining Example
+
+```typescript
+// Application code - all in ONE round trip
+const user = api.getUser(123);           // RpcPromise, not awaited
+const profile = await api.getProfile(user.id);  // Pipelined!
+```
+
+**Wire Protocol:**
+
+```
+Client → Server:
+["push", ["pipeline", 0, ["getUser"], [[123]]]]     // ID 1: getUser(123)
+["push", ["pipeline", 1, ["id"]]]                    // ID 2: (result of 1).id
+["push", ["pipeline", 0, ["getProfile"], [["pipeline", 2]]]]  // ID 3: getProfile(...)
+["pull", 3]                                          // Only care about final result
+
+Server → Client:
+["resolve", 1, { "id": 123, "name": "Alice" }]      // getUser result
+["resolve", 2, 123]                                  // .id result
+["resolve", 3, { "bio": "...", "avatar": "..." }]   // getProfile result
+
+Client → Server:
+["release", 1, 1]
+["release", 2, 1]
+["release", 3, 1]
+```
+
+### Capability Passing Lifecycle
+
+When a capability (RpcTarget or function) is passed over RPC:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  1. EXPORT: Passing a capability FROM local TO remote              │
+└─────────────────────────────────────────────────────────────────────┘
+
+  Local Side                              Remote Side
+  ┌────────────────────┐                  ┌────────────────────┐
+  │ class MyCallback   │   ["export",-1]  │ RpcStub<MyCallback>│
+  │   extends RpcTarget│ ─────────────►   │   (proxy)          │
+  │                    │                  │                    │
+  │ Exports Table:     │                  │ Imports Table:     │
+  │ ID=-1 → MyCallback │                  │ ID=-1 → ImportHook │
+  └────────────────────┘                  └────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│  2. USE: Remote invokes the capability                              │
+└─────────────────────────────────────────────────────────────────────┘
+
+  Remote Side                             Local Side
+  ┌────────────────────┐                  ┌────────────────────┐
+  │ await stub.onEvent │   ["push",       │ MyCallback.onEvent │
+  │     ("data")       │   ["pipeline",-1,│    ("data")        │
+  │                    │    ["onEvent"],  │                    │
+  │                    │    [["data"]]]]  │                    │
+  │                    │ ─────────────►   │                    │
+  └────────────────────┘                  └────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│  3. DISPOSE: Remote is done with the capability                     │
+└─────────────────────────────────────────────────────────────────────┘
+
+  Remote Side                             Local Side
+  ┌────────────────────┐                  ┌────────────────────┐
+  │ stub[Symbol        │   ["release",    │ MyCallback         │
+  │   .dispose]()      │    -1, 1]        │  [Symbol.dispose]()│
+  │                    │ ─────────────►   │  called if defined │
+  │ Imports Table:     │                  │                    │
+  │ ID=-1 removed      │                  │ Exports Table:     │
+  └────────────────────┘                  │ ID=-1 removed      │
+                                          └────────────────────┘
+```
+
+### HTTP Batch Mode Timing
+
+```
+┌───────────────────────────────────────────────────────────────────┐
+│  Microtask 0: Application code runs                               │
+│  ┌────────────────────────────────────────────────────────────┐   │
+│  │ const a = api.methodA();   // Queued                       │   │
+│  │ const b = api.methodB();   // Queued                       │   │
+│  │ const c = api.methodC(a);  // Queued (pipeline)            │   │
+│  │ const result = await Promise.all([a, b, c]); // ◄── await  │   │
+│  └────────────────────────────────────────────────────────────┘   │
+└───────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌───────────────────────────────────────────────────────────────────┐
+│  setTimeout(0): Batch collected and sent                          │
+│  ┌────────────────────────────────────────────────────────────┐   │
+│  │  POST /rpc HTTP/1.1                                        │   │
+│  │  Content-Type: text/plain                                  │   │
+│  │                                                            │   │
+│  │  ["push", ["pipeline", 0, ["methodA"]]]                    │   │
+│  │  ["push", ["pipeline", 0, ["methodB"]]]                    │   │
+│  │  ["push", ["pipeline", 0, ["methodC"], [["pipeline",1]]]]  │   │
+│  │  ["pull", 1]                                               │   │
+│  │  ["pull", 2]                                               │   │
+│  │  ["pull", 3]                                               │   │
+│  └────────────────────────────────────────────────────────────┘   │
+└───────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌───────────────────────────────────────────────────────────────────┐
+│  HTTP Response: All results in one response                       │
+│  ┌────────────────────────────────────────────────────────────┐   │
+│  │  ["resolve", 1, resultA]                                   │   │
+│  │  ["resolve", 2, resultB]                                   │   │
+│  │  ["resolve", 3, resultC]                                   │   │
+│  └────────────────────────────────────────────────────────────┘   │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Version Negotiation
+
+The protocol supports version negotiation for forward/backward compatibility:
+
+```
+Client                                Server
+   │                                     │
+   │ ─── ["hello", versions, peerId] ──► │  Client sends supported versions
+   │                                     │
+   │ ◄── ["hello-ack", selected, id] ─── │  Server picks highest common
+   │                                     │
+   │ ─── ["push", ...] ─────────────────►│  Normal messages can now flow
+```
+
+**Fallback Behavior:**
+
+If the server doesn't support version negotiation (older implementation), it will respond with a regular RPC message. The client detects this and falls back to the current protocol version.
+
+**Version Format:** `major.minor` (e.g., "1.0")
+
+- Major version changes: Breaking wire format changes
+- Minor version changes: Backward-compatible additions

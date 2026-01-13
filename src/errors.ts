@@ -24,8 +24,14 @@ export const ErrorCode = {
   /** Connection-related errors (network, transport) */
   CONNECTION_ERROR: 1001,
 
+  /** Protocol version mismatch or negotiation failure */
+  VERSION_MISMATCH_ERROR: 1002,
+
   /** RPC method call failures */
   RPC_ERROR: 2001,
+
+  /** Backpressure limit exceeded (pending calls or queue full) */
+  BACKPRESSURE_ERROR: 2002,
 
   /** Request timeout exceeded */
   TIMEOUT_ERROR: 3001,
@@ -44,7 +50,9 @@ export type ErrorCodeType = (typeof ErrorCode)[keyof typeof ErrorCode];
  */
 export const ErrorCodeName: Record<ErrorCodeType, string> = {
   [ErrorCode.CONNECTION_ERROR]: 'CONNECTION_ERROR',
+  [ErrorCode.VERSION_MISMATCH_ERROR]: 'VERSION_MISMATCH_ERROR',
   [ErrorCode.RPC_ERROR]: 'RPC_ERROR',
+  [ErrorCode.BACKPRESSURE_ERROR]: 'BACKPRESSURE_ERROR',
   [ErrorCode.TIMEOUT_ERROR]: 'TIMEOUT_ERROR',
   [ErrorCode.CAPABILITY_ERROR]: 'CAPABILITY_ERROR',
   [ErrorCode.SERIALIZATION_ERROR]: 'SERIALIZATION_ERROR',
@@ -152,6 +160,46 @@ export class ConnectionError extends CapnwebError {
 }
 
 /**
+ * Error thrown when protocol version negotiation fails.
+ *
+ * Error Code: 1002 (VERSION_MISMATCH_ERROR)
+ *
+ * Common causes:
+ * - Client and server have incompatible protocol versions
+ * - Server does not support any version offered by the client
+ * - Client does not support the version selected by the server
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   await connect('wss://api.example.do');
+ * } catch (error) {
+ *   if (error instanceof VersionMismatchError) {
+ *     console.log('Version mismatch:', error.message);
+ *     console.log('Local versions:', error.localVersions);
+ *     console.log('Remote versions:', error.remoteVersions);
+ *   }
+ * }
+ * ```
+ */
+export class VersionMismatchError extends CapnwebError {
+  /**
+   * Creates a new VersionMismatchError.
+   * @param message - Description of the version mismatch
+   * @param localVersions - Versions supported by the local side
+   * @param remoteVersions - Versions supported by the remote side
+   */
+  constructor(
+    message: string,
+    public readonly localVersions?: string[],
+    public readonly remoteVersions?: string[]
+  ) {
+    super(message, ErrorCode.VERSION_MISMATCH_ERROR, 'VERSION_MISMATCH_ERROR');
+    this.name = 'VersionMismatchError';
+  }
+}
+
+/**
  * Error thrown when an RPC method call fails.
  *
  * Error Code: 2001 (RPC_ERROR)
@@ -192,6 +240,46 @@ export class RpcError extends CapnwebError {
 }
 
 /**
+ * Error thrown when backpressure limits are exceeded.
+ *
+ * Error Code: 2002 (BACKPRESSURE_ERROR)
+ *
+ * Common causes:
+ * - Too many pending RPC calls (maxPendingCalls limit reached)
+ * - Transport queue is full (maxQueueSize limit reached)
+ * - System is overloaded and cannot accept more requests
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   await client.call('method');
+ * } catch (error) {
+ *   if (error instanceof BackpressureError) {
+ *     console.log('Backpressure limit exceeded:', error.message);
+ *     // Wait for drain before retrying
+ *     await session.waitForDrain();
+ *   }
+ * }
+ * ```
+ */
+export class BackpressureError extends CapnwebError {
+  /**
+   * Creates a new BackpressureError.
+   * @param message - Description of the backpressure condition
+   * @param currentCount - Current number of pending calls
+   * @param limit - The limit that was exceeded
+   */
+  constructor(
+    message: string,
+    public readonly currentCount?: number,
+    public readonly limit?: number
+  ) {
+    super(message, ErrorCode.BACKPRESSURE_ERROR, 'BACKPRESSURE_ERROR');
+    this.name = 'BackpressureError';
+  }
+}
+
+/**
  * Error thrown when an operation exceeds its timeout.
  *
  * Error Code: 3001 (TIMEOUT_ERROR)
@@ -219,10 +307,12 @@ export class TimeoutError extends CapnwebError {
    * Creates a new TimeoutError.
    * @param message - Description of what timed out (default: 'Request timed out')
    * @param timeoutMs - The timeout duration in milliseconds
+   * @param elapsedMs - The actual elapsed time in milliseconds before timeout
    */
   constructor(
     message: string = 'Request timed out',
-    public readonly timeoutMs?: number
+    public readonly timeoutMs?: number,
+    public readonly elapsedMs?: number
   ) {
     super(message, ErrorCode.TIMEOUT_ERROR, 'TIMEOUT_ERROR');
     this.name = 'TimeoutError';
@@ -344,8 +434,12 @@ export function createError(code: ErrorCodeType, message: string): CapnwebError 
   switch (code) {
     case ErrorCode.CONNECTION_ERROR:
       return new ConnectionError(message);
+    case ErrorCode.VERSION_MISMATCH_ERROR:
+      return new VersionMismatchError(message);
     case ErrorCode.RPC_ERROR:
       return new RpcError(message);
+    case ErrorCode.BACKPRESSURE_ERROR:
+      return new BackpressureError(message);
     case ErrorCode.TIMEOUT_ERROR:
       return new TimeoutError(message);
     case ErrorCode.CAPABILITY_ERROR:

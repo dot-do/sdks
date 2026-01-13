@@ -39,9 +39,11 @@ class NullExporter implements Exporter {
 const NULL_EXPORTER = new NullExporter();
 
 // Maps error name to error class for deserialization.
+// Note: Only standard ECMAScript error types are supported. Browser-specific errors (DOMError,
+// DOMException, etc.) and runtime-specific errors would need explicit handling. Unknown error
+// types fall back to the base Error class.
 const ERROR_TYPES: Record<string, any> = {
   Error, EvalError, RangeError, ReferenceError, SyntaxError, TypeError, URIError, AggregateError,
-  // TODO: DOMError? Others?
 };
 
 // Polyfill type for UInt8Array.toBase64(), which has started landing in JS runtimes but is not
@@ -166,10 +168,13 @@ export class Devaluator {
       case "error": {
         let e = <Error>value;
 
-        // TODO:
-        // - Determine type by checking prototype rather than `name`, which can be overridden?
-        // - Serialize cause / suppressed error / etc.
-        // - Serialize added properties.
+        // Error serialization notes:
+        // - Error type is determined by `name` property (not prototype) for simplicity and
+        //   cross-realm compatibility. Custom error classes should set `name` appropriately.
+        // - Error.cause and suppressed errors are not currently serialized. This could be
+        //   added by recursively serializing the cause chain.
+        // - Custom properties on errors are not serialized. Standard properties (name, message,
+        //   stack) are sufficient for debugging; custom data should be sent separately.
 
         let rewritten = this.exporter.onSendError(e);
         if (rewritten) {
@@ -392,7 +397,7 @@ export class Evaluator {
               this.promises.push({promise, parent, property});
               return promise;
             } else {
-              let stub = new RpcPromise(hook, []);
+              let stub = new RpcStub(hook);
               this.stubs.push(stub);
               return stub;
             }

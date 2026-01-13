@@ -3,77 +3,59 @@
 //     https://opensource.org/license/mit
 
 import { RpcStub } from "./core.js";
-import { RpcTransport, RpcSession, RpcSessionOptions } from "./rpc.js";
+import { RpcSession, RpcSessionOptions } from "./rpc.js";
+import { BaseTransport } from "./transports/base.js";
 
 // Start a MessagePort session given a MessagePort or a pair of MessagePorts.
 //
 // `localMain` is the main RPC interface to expose to the peer. Returns a stub for the main
 // interface exposed from the peer.
+//
+// For MessagePort, either side can be the initiator. By default, we assume this side
+// is the initiator. Pass `isInitiator: false` in options if connecting to a parent frame
+// that will initiate the handshake.
 export function newMessagePortRpcSession(
-    port: MessagePort, localMain?: any, options?: RpcSessionOptions): RpcStub {
+    port: MessagePort, localMain?: unknown, options?: RpcSessionOptions & { isInitiator?: boolean }): RpcStub {
   let transport = new MessagePortTransport(port);
-  let rpc = new RpcSession(transport, localMain, options);
+  // Default to being the initiator for MessagePort connections
+  let isInitiator = options?.isInitiator ?? true;
+  let rpc = new RpcSession(transport, localMain, options, isInitiator);
   return rpc.getRemoteMain();
 }
 
-class MessagePortTransport implements RpcTransport {
+class MessagePortTransport extends BaseTransport {
+  #port: MessagePort;
+
   constructor (port: MessagePort) {
+    super();
     this.#port = port;
 
     // Start listening for messages
     port.start();
 
-    port.addEventListener("message", (event: MessageEvent<any>) => {
-      if (this.#error) {
+    port.addEventListener("message", (event: MessageEvent<unknown>) => {
+      if (this.error) {
         // Ignore further messages.
       } else if (event.data === null) {
         // Peer is signaling that they're closing the connection
-        this.#receivedError(new Error("Peer closed MessagePort connection."));
+        this.setError(new Error("Peer closed MessagePort connection."));
       } else if (typeof event.data === "string") {
-        if (this.#receiveResolver) {
-          this.#receiveResolver(event.data);
-          this.#receiveResolver = undefined;
-          this.#receiveRejecter = undefined;
-        } else {
-          this.#receiveQueue.push(event.data);
-        }
+        this.enqueue(event.data);
       } else {
-        this.#receivedError(new TypeError("Received non-string message from MessagePort."));
+        this.setError(new TypeError("Received non-string message from MessagePort."));
       }
     });
 
     port.addEventListener("messageerror", (event: MessageEvent) => {
-      this.#receivedError(new Error("MessagePort message error."));
+      this.setError(new Error("MessagePort message error."));
     });
   }
 
-  #port: MessagePort;
-  #receiveResolver?: (message: string) => void;
-  #receiveRejecter?: (err: any) => void;
-  #receiveQueue: string[] = [];
-  #error?: any;
-
-  async send(message: string): Promise<void> {
-    if (this.#error) {
-      throw this.#error;
-    }
+  protected async doSend(message: string): Promise<void> {
     this.#port.postMessage(message);
   }
 
-  async receive(): Promise<string> {
-    if (this.#receiveQueue.length > 0) {
-      return this.#receiveQueue.shift()!;
-    } else if (this.#error) {
-      throw this.#error;
-    } else {
-      return new Promise<string>((resolve, reject) => {
-        this.#receiveResolver = resolve;
-        this.#receiveRejecter = reject;
-      });
-    }
-  }
-
-  abort?(reason: any): void {
+  protected doAbort(reason: unknown): void {
     // Send close signal to peer before closing
     try {
       this.#port.postMessage(null);
@@ -82,21 +64,5 @@ class MessagePortTransport implements RpcTransport {
     }
 
     this.#port.close();
-
-    if (!this.#error) {
-      this.#error = reason;
-      // No need to call receiveRejecter(); RPC implementation will stop listening anyway.
-    }
-  }
-
-  #receivedError(reason: any) {
-    if (!this.#error) {
-      this.#error = reason;
-      if (this.#receiveRejecter) {
-        this.#receiveRejecter(reason);
-        this.#receiveResolver = undefined;
-        this.#receiveRejecter = undefined;
-      }
-    }
   }
 }

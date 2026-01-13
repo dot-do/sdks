@@ -14,7 +14,7 @@ class BatchClientTransport implements RpcTransport {
   }
 
   #promise: Promise<void>;
-  #aborted: any;
+  #aborted: unknown;
 
   #batchToSend: string[] | null = [];
   #batchToReceive: string[] | null = null;
@@ -43,7 +43,7 @@ class BatchClientTransport implements RpcTransport {
     }
   }
 
-  abort?(reason: any): void {
+  abort?(reason: unknown): void {
     this.#aborted = reason;
   }
 
@@ -85,7 +85,8 @@ export function newHttpBatchRpcSession(
   };
 
   let transport = new BatchClientTransport(sendBatch);
-  let rpc = new RpcSession(transport, undefined, options);
+  // HTTP batch client is the initiator
+  let rpc = new RpcSession(transport, undefined, options, /*isInitiator=*/true);
   return rpc.getRemoteMain();
 }
 
@@ -113,7 +114,7 @@ class BatchServerTransport implements RpcTransport {
     }
   }
 
-  abort?(reason: any): void {
+  abort?(reason: unknown): void {
     this.#allReceived.reject(reason);
   }
 
@@ -137,7 +138,7 @@ class BatchServerTransport implements RpcTransport {
  *     headers, so you can modify them using e.g. `response.headers.set("Foo", "bar")`.
  */
 export async function newHttpBatchRpcResponse(
-    request: Request, localMain: any, options?: RpcSessionOptions): Promise<Response> {
+    request: Request, localMain: unknown, options?: RpcSessionOptions): Promise<Response> {
   if (request.method !== "POST") {
     return new Response("This endpoint only accepts POST requests.", { status: 405 });
   }
@@ -146,19 +147,21 @@ export async function newHttpBatchRpcResponse(
   let batch = body === "" ? [] : body.split("\n");
 
   let transport = new BatchServerTransport(batch);
-  let rpc = new RpcSession(transport, localMain, options);
+  // HTTP batch server is not the initiator (waits for client's hello)
+  let rpc = new RpcSession(transport, localMain, options, /*isInitiator=*/false);
 
-  // TODO: Arguably we should arrange so any attempts to pull promise resolutions from the client
-  //   will reject rather than just hang. But it IS valid to make server->client calls in order to
-  //   then pipeline the result into something returned to the client. We don't want the errors to
-  //   prematurely cancel anything that would eventually complete. So for now we just say, it's the
-  //   app's responsibility to not wait on any server -> client calls since they will never
-  //   complete.
+  // Design note: In HTTP batch mode, server->client promise pulls will hang forever because
+  // the client can't send back responses. While we could reject these pulls immediately, doing
+  // so would break valid use cases where the server makes server->client calls only to pipeline
+  // the results into client-bound responses (which completes successfully). The application is
+  // responsible for not awaiting server->client calls that require a response.
 
   await transport.whenAllReceived();
   await rpc.drain();
 
-  // TODO: Ask RpcSession to dispose everything it is still holding on to?
+  // Note: After drain(), the RpcSession has processed all messages but may still hold references
+  // to exported stubs. These will be released when the session is garbage collected. For explicit
+  // cleanup, applications can call shutdown() on stubs they've received before this point.
 
   return new Response(transport.getResponseBody());
 }
@@ -173,7 +176,7 @@ export async function newHttpBatchRpcResponse(
  */
 export async function nodeHttpBatchRpcResponse(
     request: IncomingMessage, response: ServerResponse,
-    localMain: any,
+    localMain: unknown,
     options?: RpcSessionOptions & {
       headers?: OutgoingHttpHeaders | OutgoingHttpHeader[],
     }): Promise<void> {
@@ -194,7 +197,8 @@ export async function nodeHttpBatchRpcResponse(
   let batch = body === "" ? [] : body.split("\n");
 
   let transport = new BatchServerTransport(batch);
-  let rpc = new RpcSession(transport, localMain, options);
+  // HTTP batch server is not the initiator
+  let rpc = new RpcSession(transport, localMain, options, /*isInitiator=*/false);
 
   await transport.whenAllReceived();
   await rpc.drain();

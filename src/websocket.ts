@@ -5,16 +5,18 @@
 /// <reference types="@cloudflare/workers-types" />
 
 import { RpcStub } from "./core.js";
-import { RpcTransport, RpcSession, RpcSessionOptions } from "./rpc.js";
+import { RpcSession, RpcSessionOptions } from "./rpc.js";
+import { BaseTransport } from "./transports/base.js";
 
 export function newWebSocketRpcSession(
-    webSocket: WebSocket | string, localMain?: any, options?: RpcSessionOptions): RpcStub {
+    webSocket: WebSocket | string, localMain?: unknown, options?: RpcSessionOptions): RpcStub {
   if (typeof webSocket === "string") {
     webSocket = new WebSocket(webSocket);
   }
 
   let transport = new WebSocketTransport(webSocket);
-  let rpc = new RpcSession(transport, localMain, options);
+  // Client-initiated WebSocket connections are initiators
+  let rpc = new RpcSession(transport, localMain, options, /*isInitiator=*/true);
   return rpc.getRemoteMain();
 }
 
@@ -23,7 +25,7 @@ export function newWebSocketRpcSession(
  * with the given `localMain`.
  */
 export function newWorkersWebSocketRpcResponse(
-    request: Request, localMain?: any, options?: RpcSessionOptions): Response {
+    request: Request, localMain?: unknown, options?: RpcSessionOptions): Response {
   if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
     return new Response("This endpoint only accepts WebSocket requests.", { status: 400 });
   }
@@ -31,15 +33,21 @@ export function newWorkersWebSocketRpcResponse(
   let pair = new WebSocketPair();
   let server = pair[0];
   server.accept()
-  newWebSocketRpcSession(server, localMain, options);
+  // Server-side WebSocket connections are not initiators (they wait for client's hello)
+  let transport = new WebSocketTransport(server);
+  new RpcSession(transport, localMain, options, /*isInitiator=*/false);
   return new Response(null, {
     status: 101,
     webSocket: pair[1],
   });
 }
 
-class WebSocketTransport implements RpcTransport {
+class WebSocketTransport extends BaseTransport {
+  #webSocket: WebSocket;
+  #sendQueue?: string[];  // only if not opened yet
+
   constructor (webSocket: WebSocket) {
+    super();
     this.#webSocket = webSocket;
 
     if (webSocket.readyState === WebSocket.CONNECTING) {
@@ -50,45 +58,40 @@ class WebSocketTransport implements RpcTransport {
             webSocket.send(message);
           }
         } catch (err) {
-          this.#receivedError(err);
+          this.setError(err);
         }
         this.#sendQueue = undefined;
       });
     }
 
-    webSocket.addEventListener("message", (event: MessageEvent<any>) => {
-      if (this.#error) {
+    webSocket.addEventListener("message", (event: MessageEvent<unknown>) => {
+      if (this.error) {
         // Ignore further messages.
       } else if (typeof event.data === "string") {
-        if (this.#receiveResolver) {
-          this.#receiveResolver(event.data);
-          this.#receiveResolver = undefined;
-          this.#receiveRejecter = undefined;
-        } else {
-          this.#receiveQueue.push(event.data);
-        }
+        this.enqueue(event.data);
       } else {
-        this.#receivedError(new TypeError("Received non-string message from WebSocket."));
+        this.setError(new TypeError("Received non-string message from WebSocket."));
       }
     });
 
     webSocket.addEventListener("close", (event: CloseEvent) => {
-      this.#receivedError(new Error(`Peer closed WebSocket: ${event.code} ${event.reason}`));
+      this.setError(new Error(`Peer closed WebSocket: ${event.code} ${event.reason}`));
     });
 
     webSocket.addEventListener("error", (event: Event) => {
-      this.#receivedError(new Error(`WebSocket connection failed.`));
+      this.setError(new Error(`WebSocket connection failed.`));
     });
   }
 
-  #webSocket: WebSocket;
-  #sendQueue?: string[];  // only if not opened yet
-  #receiveResolver?: (message: string) => void;
-  #receiveRejecter?: (err: any) => void;
-  #receiveQueue: string[] = [];
-  #error?: any;
-
+  /**
+   * Override send() to not throw on error.
+   * WebSocket transport ignores errors during send and relies on receive() to surface them.
+   */
   async send(message: string): Promise<void> {
+    return this.doSend(message);
+  }
+
+  protected async doSend(message: string): Promise<void> {
     if (this.#sendQueue === undefined) {
       this.#webSocket.send(message);
     } else {
@@ -97,20 +100,7 @@ class WebSocketTransport implements RpcTransport {
     }
   }
 
-  async receive(): Promise<string> {
-    if (this.#receiveQueue.length > 0) {
-      return this.#receiveQueue.shift()!;
-    } else if (this.#error) {
-      throw this.#error;
-    } else {
-      return new Promise<string>((resolve, reject) => {
-        this.#receiveResolver = resolve;
-        this.#receiveRejecter = reject;
-      });
-    }
-  }
-
-  abort?(reason: any): void {
+  protected doAbort(reason: unknown): void {
     let message: string;
     if (reason instanceof Error) {
       message = reason.message;
@@ -118,21 +108,5 @@ class WebSocketTransport implements RpcTransport {
       message = `${reason}`;
     }
     this.#webSocket.close(3000, message);
-
-    if (!this.#error) {
-      this.#error = reason;
-      // No need to call receiveRejecter(); RPC implementation will stop listening anyway.
-    }
-  }
-
-  #receivedError(reason: any) {
-    if (!this.#error) {
-      this.#error = reason;
-      if (this.#receiveRejecter) {
-        this.#receiveRejecter(reason);
-        this.#receiveResolver = undefined;
-        this.#receiveRejecter = undefined;
-      }
-    }
   }
 }

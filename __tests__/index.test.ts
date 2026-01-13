@@ -3,6 +3,13 @@
 //     https://opensource.org/license/mit
 
 import { expect, it, describe, inject } from "vitest"
+
+// Declare the provided test configuration from globalSetup
+declare module "vitest" {
+  export interface ProvidedContext {
+    testServerHost: string
+  }
+}
 import { deserialize, serialize, RpcSession, type RpcSessionOptions, RpcTransport, RpcTarget,
          RpcStub, newWebSocketRpcSession, newMessagePortRpcSession,
          newHttpBatchRpcSession} from "../src/index.js"
@@ -219,12 +226,14 @@ describe("local stub", () => {
     // TODO: If we don't explicitly declare the type of `i` then the type system complains about
     //   too-deep recursion here. Why?
     let stub = new RpcStub((i :number) => i + 5);
-    expect(await stub(3)).toBe(8);
+    // Type system doesn't recognize the stub as callable, but it is at runtime
+    expect(await (stub as unknown as (i: number) => Promise<number>)(3)).toBe(8);
   });
 
   it("supports wrapping an async function", async () => {
     let stub = new RpcStub(async (i :number) => { return i + 5; });
-    expect(await stub(3)).toBe(8);
+    // Type system doesn't recognize the stub as callable, but it is at runtime
+    expect(await (stub as unknown as (i: number) => Promise<number>)(3)).toBe(8);
   });
 
   it("supports wrapping an arbitrary object", async () => {
@@ -365,22 +374,22 @@ describe("local stub", () => {
 
     {
       using promise = stub.returnNull();
-      expect(await promise.map(_ => counter.increment(123))).toBe(null);
+      expect(await promise.map((_: null) => counter.increment(123))).toBe(null);
     }
 
     {
       using promise = stub.returnUndefined();
-      expect(await promise.map(_ => counter.increment(456))).toBe(undefined);
+      expect(await promise.map((_: undefined) => counter.increment(456))).toBe(undefined);
     }
 
     {
       using promise = stub.returnNumber(2);
-      expect(await promise.map(i => counter.increment(i))).toBe(2);
+      expect(await promise.map((i: number) => counter.increment(i))).toBe(2);
     }
 
     {
       using promise = stub.returnNumber(4);
-      expect(await promise.map(i => counter.increment(i))).toBe(6);
+      expect(await promise.map((i: number) => counter.increment(i))).toBe(6);
     }
   });
 
@@ -389,16 +398,16 @@ describe("local stub", () => {
     let stub = new RpcStub(new TestTarget());
 
     using fib = stub.generateFibonacci(6);
-    using counters = await fib.map(i => {
+    using counters = await fib.map((i: number) => {
       let counter = stub.makeCounter(i);
       let val = counter.increment(3);
       outerCounter.increment();
       return {counter, val};
     });
 
-    expect(counters.map(x => x.val)).toStrictEqual([3, 4, 4, 5, 6, 8]);
+    expect(counters.map((x: any) => x.val)).toStrictEqual([3, 4, 4, 5, 6, 8]);
 
-    expect(await Promise.all(counters.map(x => x.counter.value)))
+    expect(await Promise.all(counters.map((x: any) => x.counter.value)))
         .toStrictEqual([3, 4, 4, 5, 6, 8]);
 
     expect(await outerCounter.value).toBe(6);
@@ -408,8 +417,8 @@ describe("local stub", () => {
     let stub = new RpcStub(new TestTarget());
 
     let fib = stub.generateFibonacci(7);
-    let result = await fib.map(i => {
-      return stub.generateFibonacci(i).map(j => {
+    let result = await fib.map((i: number) => {
+      return stub.generateFibonacci(i).map((j: number) => {
         return stub.generateFibonacci(j);
       });
     });
@@ -898,22 +907,22 @@ describe("map() over RPC", () => {
 
     {
       using promise = stub.returnNull();
-      expect(await promise.map(_ => counter.increment(123))).toBe(null);
+      expect(await promise.map((_: null) => counter.increment(123))).toBe(null);
     }
 
     {
       using promise = stub.returnUndefined();
-      expect(await promise.map(_ => counter.increment(456))).toBe(undefined);
+      expect(await promise.map((_: undefined) => counter.increment(456))).toBe(undefined);
     }
 
     {
       using promise = stub.returnNumber(2);
-      expect(await promise.map(i => counter.increment(i))).toBe(2);
+      expect(await promise.map((i: number) => counter.increment(i))).toBe(2);
     }
 
     {
       using promise = stub.returnNumber(4);
-      expect(await promise.map(i => counter.increment(i))).toBe(6);
+      expect(await promise.map((i: number) => counter.increment(i))).toBe(6);
     }
   });
 
@@ -924,16 +933,16 @@ describe("map() over RPC", () => {
     let stub = harness.stub;
 
     using fib = stub.generateFibonacci(6);
-    using counters = await fib.map(i => {
+    using counters = await fib.map((i: number) => {
       let counter = stub.makeCounter(i);
       let val = counter.increment(3);
       outerCounter.increment();
       return {counter, val};
     });
 
-    expect(counters.map(x => x.val)).toStrictEqual([3, 4, 4, 5, 6, 8]);
+    expect(counters.map((x: any) => x.val)).toStrictEqual([3, 4, 4, 5, 6, 8]);
 
-    expect(await Promise.all(counters.map(x => x.counter.value)))
+    expect(await Promise.all(counters.map((x: any) => x.counter.value)))
         .toStrictEqual([3, 4, 4, 5, 6, 8]);
 
     expect(await outerCounter.value).toBe(6);
@@ -944,8 +953,8 @@ describe("map() over RPC", () => {
     let stub = harness.stub;
 
     using fib = stub.generateFibonacci(7);
-    using result = await fib.map(i => {
-      return stub.generateFibonacci(i).map(j => {
+    using result = await fib.map((i: number) => {
+      return stub.generateFibonacci(i).map((j: number) => {
         return stub.generateFibonacci(j);
       });
     });
@@ -1362,23 +1371,23 @@ describe("onRpcBroken", () => {
     let stub = harness.stub;
     expect(await stub.getValue()).toBe(42);
 
-    let errors: {which: string, error: any}[] = [];
-    stub.onRpcBroken(error => { errors.push({which: "stub", error}); });
+    let errors: {which: string, error: unknown}[] = [];
+    stub.onRpcBroken((error: unknown) => { errors.push({which: "stub", error}); });
 
     let counter1Promise = stub.makeCounter();
-    counter1Promise.onRpcBroken(error => { errors.push({which: "counter1Promise", error}); });
+    counter1Promise.onRpcBroken((error: unknown) => { errors.push({which: "counter1Promise", error}); });
 
     let counter2 = await stub.makeCounter();
-    counter2.onRpcBroken(error => { errors.push({which: "counter2", error}); });
+    counter2.onRpcBroken((error: unknown) => { errors.push({which: "counter2", error}); });
 
     let counter1 = await counter1Promise;
-    counter1.onRpcBroken(error => { errors.push({which: "counter1", error}); });
+    counter1.onRpcBroken((error: unknown) => { errors.push({which: "counter1", error}); });
 
     let hangingPromise = stub.hangingCall();
-    hangingPromise.onRpcBroken(error => { errors.push({which: "hangingCall", error}); });
+    hangingPromise.onRpcBroken((error: unknown) => { errors.push({which: "hangingCall", error}); });
 
     let throwingPromise = stub.throwError();
-    throwingPromise.onRpcBroken(error => { errors.push({which: "throwError", error}); });
+    throwingPromise.onRpcBroken((error: unknown) => { errors.push({which: "throwError", error}); });
 
     // The method that threw should report brokenness immediately.
     await throwingPromise.catch(err => {});
@@ -1387,7 +1396,7 @@ describe("onRpcBroken", () => {
     ]);
 
     // onRpcBroken() when already broken just reports the error immediately.
-    throwingPromise.onRpcBroken(error => { errors.push({which: "throwError2", error}); });
+    throwingPromise.onRpcBroken((error: unknown) => { errors.push({which: "throwError2", error}); });
     expect(errors).toStrictEqual([
       {which: "throwError", error: new Error("test error")},
       {which: "throwError2", error: new Error("test error")},
@@ -1505,7 +1514,8 @@ describe("MessagePorts", () => {
     serverStub[Symbol.dispose]();
 
     // Wait for the client to detect the broken connection
+    // The server sends an abort message with the reason when it disposes the main stub
     await expect(() => brokenPromise).rejects.toThrow(
-        new Error("Peer closed MessagePort connection."));
+        new Error("RPC session was shut down by disposing the main stub"));
   });
 });

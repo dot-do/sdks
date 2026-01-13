@@ -920,3 +920,136 @@ let stub: RemoteMainInterface = session.getRemoteMain();
 ```
 
 Note that sessions are entirely symmetric: neither side is defined as the "client" nor the "server". Each side can optionally expose a "main interface" to the other. In typical scenarios with a logical client and server, the server exposes a main interface but the client does not.
+
+## Advanced Configuration
+
+### Session Options
+
+All session factory functions accept an optional `RpcSessionOptions` object:
+
+```typescript
+interface RpcSessionOptions {
+  // Request timeout in milliseconds. If a call takes longer, it throws TimeoutError.
+  timeout?: number;
+
+  // Maximum number of concurrent pending calls. Throws RpcError when exceeded.
+  maxPendingCalls?: number;
+
+  // Called when an internal error occurs (serialization failures, transport errors).
+  // If not provided, errors are logged to console.error.
+  onInternalError?: (error: unknown, context: string) => void;
+
+  // Version negotiation callbacks (for protocol evolution)
+  onVersionNegotiated?: (version: string, isLatest: boolean) => void;
+  onVersionWarning?: (warning: string) => void;
+}
+```
+
+Example with timeout and error handling:
+
+```typescript
+const api = newWebSocketRpcSession<MyApi>("wss://api.example.com", undefined, {
+  timeout: 30000, // 30 second timeout
+  maxPendingCalls: 100, // Limit concurrent calls
+  onInternalError: (error, context) => {
+    console.error(`RPC error in ${context}:`, error);
+    // Send to error tracking service
+  }
+});
+```
+
+### Per-Call Timeout Override
+
+You can override the session timeout for individual calls by passing a `timeout` option as the last argument:
+
+```typescript
+// Use session default timeout
+const result1 = await api.quickMethod();
+
+// Override with longer timeout for slow operations
+const result2 = await api.slowMethod({ timeout: 120000 });
+
+// Disable timeout for this call
+const result3 = await api.verySlowMethod({ timeout: 0 });
+```
+
+### Session Lifecycle
+
+Sessions support explicit lifecycle management:
+
+```typescript
+const session = new RpcSession<MyApi>(transport, localMain);
+const api = session.getRemoteMain();
+
+// Check if session is still open
+if (!session.isClosed) {
+  await api.doSomething();
+}
+
+// Close the session gracefully
+session.close();
+
+// Or close with a reason
+session.close(new Error("User logged out"));
+
+// Wait for session to close (useful for cleanup)
+const closeReason = await session.onClosed();
+if (closeReason) {
+  console.log("Session closed due to:", closeReason.message);
+}
+```
+
+When a session closes:
+- All pending calls are rejected with `ConnectionError`
+- Import/export tables are cleaned up
+- No new calls can be made
+
+### Backpressure Handling
+
+For high-throughput scenarios, you can monitor and respond to backpressure:
+
+```typescript
+const session = new RpcSession<MyApi>(transport, localMain, {
+  maxPendingCalls: 50
+});
+
+// Check current load
+const pendingCount = session.getPendingCallCount();
+
+// Check if under pressure
+if (session.hasBackpressure()) {
+  // Wait for some calls to complete before sending more
+  await session.waitForDrain();
+}
+
+// Now safe to send more calls
+await api.nextBatch();
+```
+
+### Error Types
+
+Cap'n Web defines several error types for different failure modes:
+
+```typescript
+import {
+  CapnwebError,       // Base class for all Cap'n Web errors
+  ConnectionError,    // Network/transport failures (code 1001)
+  VersionMismatchError, // Protocol version incompatibility (code 1002)
+  RpcError,           // Method call failures (code 2001)
+  TimeoutError,       // Request timeout exceeded (code 3001)
+  CapabilityError,    // Capability resolution failures (code 4001)
+  SerializationError, // Encoding/decoding failures (code 5001)
+} from "capnweb";
+
+try {
+  await api.riskyMethod();
+} catch (error) {
+  if (error instanceof TimeoutError) {
+    console.log(`Timed out after ${error.timeoutMs}ms`);
+  } else if (error instanceof ConnectionError) {
+    console.log("Connection lost, reconnecting...");
+  } else if (error instanceof CapnwebError) {
+    console.log(`RPC error [${error.code}]: ${error.message}`);
+  }
+}
+```

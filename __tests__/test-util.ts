@@ -36,7 +36,8 @@ export class TestTarget extends RpcTarget {
   }
 
   async callFunction(func: RpcStub<(i: number) => Promise<number>>, i: number) {
-    return { result: await func(i) };
+    // Type system doesn't recognize RpcStub<fn> as callable, but it is at runtime
+    return { result: await (func as unknown as (i: number) => Promise<number>)(i) };
   }
 
   throwError() {

@@ -74,7 +74,8 @@ describe("workerd compatibility", () => {
   })
 
   it("can wrap a native stub in a userspace stub", async () => {
-    let stub = new RpcStub(new NativeRpcStub(new NativeCounter()));
+    // Type cast required due to type incompatibility between native and userspace RpcStub
+    let stub = new RpcStub(new NativeRpcStub(new NativeCounter()) as unknown as NativeCounter);
     expect(await stub.increment()).toBe(1);
     expect(await stub.increment()).toBe(2);
 
@@ -146,7 +147,8 @@ describe("workerd compatibility", () => {
   })
 
   it("can wrap a userspace stub in a native stub", async () => {
-    let stub = new NativeRpcStub(new RpcStub(new JsCounter()));
+    // Type cast required due to type incompatibility between native and userspace RpcStub
+    let stub = new NativeRpcStub(new RpcStub(new JsCounter()) as unknown as JsCounter);
     expect(await stub.increment()).toBe(1);
     expect(await stub.increment()).toBe(2);
 
@@ -156,7 +158,8 @@ describe("workerd compatibility", () => {
   it("can return a userspace stub from a native call", async () => {
     // Returning a bare stub.
     {
-      let factory = new NativeRpcStub(new CounterFactory());
+      // Type cast required to avoid excessive type instantiation depth
+      let factory = new NativeRpcStub(new CounterFactory()) as any;
       let stub = await factory.getJs();
       expect(await stub.increment()).toBe(1);
       expect(await stub.increment()).toBe(2);
@@ -166,7 +169,8 @@ describe("workerd compatibility", () => {
 
     // Again with a stub wrapped in an object.
     {
-      let factory = new NativeRpcStub(new CounterFactory());
+      // Type cast required to avoid excessive type instantiation depth
+      let factory = new NativeRpcStub(new CounterFactory()) as any;
       let obj = await factory.getJsEmbedded();
       expect(await obj.stub.increment()).toBe(1);
       expect(await obj.stub.increment()).toBe(2);
@@ -179,7 +183,8 @@ describe("workerd compatibility", () => {
     // Wrap a userspace RpcPromise in a native stub.
     {
       let factory = new RpcStub(new CounterFactory());
-      let stub = new NativeRpcStub(factory.getJs());
+      // Type cast required due to type incompatibility between native and userspace RpcStub
+      let stub = new NativeRpcStub(factory.getJs() as unknown as JsCounter);
       expect(await stub.increment()).toBe(1);
       expect(await stub.increment()).toBe(2);
 
@@ -189,7 +194,8 @@ describe("workerd compatibility", () => {
     // Wrap a userspace property (which is actually also an RpcPromise) in a native stub.
     {
       let factory = new RpcStub(new CounterFactory());
-      let stub = new NativeRpcStub(factory.getJsEmbedded().stub);
+      // Type cast required due to type incompatibility between native and userspace RpcStub
+      let stub = new NativeRpcStub(factory.getJsEmbedded().stub as unknown as JsCounter);
       expect(await stub.increment()).toBe(1);
       expect(await stub.increment()).toBe(2);
 
@@ -199,7 +205,8 @@ describe("workerd compatibility", () => {
 
   it("can pipeline on a userspace stub returned from a native call", async () => {
     {
-      let factory = new NativeRpcStub(new CounterFactory());
+      // Type cast required to avoid excessive type instantiation depth
+      let factory = new NativeRpcStub(new CounterFactory()) as any;
       let obj = factory.getJs();
       expect(await obj.increment()).toBe(1);
       expect(await obj.increment()).toBe(2);
@@ -208,7 +215,8 @@ describe("workerd compatibility", () => {
     }
 
     {
-      let factory = new NativeRpcStub(new CounterFactory());
+      // Type cast required to avoid excessive type instantiation depth
+      let factory = new NativeRpcStub(new CounterFactory()) as any;
       let obj = factory.getJsEmbedded();
       expect(await obj.stub.increment()).toBe(1);
       expect(await obj.stub.increment()).toBe(2);
@@ -218,7 +226,8 @@ describe("workerd compatibility", () => {
   })
 
   it("can wrap a ServiceStub in an RpcStub", async () => {
-    let result = await new RpcStub((<any>env).testServer).greet("World");
+    // Type cast required for ServiceStub to RpcStub compatibility
+    let result = await (new RpcStub((env as any).testServer) as any).greet("World");
     expect(result).toBe("Hello, World!");
   });
 });

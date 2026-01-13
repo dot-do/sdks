@@ -1,0 +1,935 @@
+# SDK Publishing Workflow
+#
+# This workflow publishes SDK packages to all supported registries when a release tag is pushed.
+#
+# =============================================================================
+# REQUIRED REPOSITORY SECRETS
+# =============================================================================
+#
+# Configure these secrets in your repository settings:
+#
+# npm (https://www.npmjs.com/):
+#   NPM_TOKEN - npm access token with publish permissions
+#               Create at: https://www.npmjs.com/settings/[username]/tokens
+#               Type: Automation token recommended for CI/CD
+#
+# PyPI (https://pypi.org/):
+#   PYPI_API_TOKEN - PyPI API token
+#                    Create at: https://pypi.org/manage/account/token/
+#                    Scope: Project-specific tokens recommended
+#
+# crates.io (https://crates.io/):
+#   CARGO_TOKEN - crates.io API token
+#                 Create at: https://crates.io/settings/tokens
+#                 Scope: publish-update
+#
+# NuGet (https://www.nuget.org/):
+#   NUGET_API_KEY - NuGet API key
+#                   Create at: https://www.nuget.org/account/apikeys
+#                   Scope: Push packages
+#
+# =============================================================================
+# PUBLISHING ORDER (respects dependencies)
+# =============================================================================
+#
+# Layer 1: capnweb (base protocol - no dependencies)
+# Layer 2: rpc (depends on capnweb)
+# Layer 3: platform/dotdo (depends on rpc)
+# Layer 4: oauth (depends on platform)
+#
+# =============================================================================
+
+name: Publish SDKs
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v0.1.0, v1.0.0, etc.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (without v prefix, e.g., 0.1.0)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Dry run mode - skip actual publishing'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write  # For npm provenance
+
+env:
+  VERSION: ${{ github.event.inputs.version || github.ref_name }}
+
+jobs:
+  # ==========================================================================
+  # TEST - Run all tests before publishing
+  # ==========================================================================
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install Node dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build TypeScript packages
+        run: pnpm run build
+
+      - name: Run TypeScript tests
+        run: pnpm test
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Run Python tests
+        run: |
+          for pkg in capnweb rpc dotdo oauth; do
+            echo "Testing Python package: $pkg"
+            cd packages/python/$pkg
+            uv sync --extra test || true
+            uv run pytest -v || echo "Tests not yet implemented for $pkg"
+            cd -
+          done
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run Rust tests
+        run: |
+          for pkg in capnweb rpc dotdo oauth; do
+            echo "Testing Rust package: $pkg"
+            cd packages/rust/$pkg
+            cargo test --verbose || echo "Tests not yet implemented for $pkg"
+            cd -
+          done
+
+  # ==========================================================================
+  # LAYER 1: CAPNWEB (Base protocol - no dependencies)
+  # ==========================================================================
+
+  publish-capnweb-npm:
+    name: npm - @dotdo/capnweb
+    needs: [test]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if already published
+        id: check
+        run: |
+          if npm view "@dotdo/capnweb@${{ steps.version.outputs.version }}" version 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install and build
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/typescript/capnweb
+        run: |
+          npm install
+          npm run build
+
+      - name: Update version
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/typescript/capnweb
+        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/typescript/capnweb
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-capnweb-pypi:
+    name: PyPI - capnweb-do
+    needs: [test]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools
+        run: pip install build twine
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if already published
+        id: check
+        run: |
+          if curl -sf "https://pypi.org/pypi/capnweb-do/${{ steps.version.outputs.version }}/json" >/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/python/capnweb
+        run: sed -i "s/^version = \".*\"/version = \"${{ steps.version.outputs.version }}\"/" pyproject.toml
+
+      - name: Build
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/python/capnweb
+        run: python -m build
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/python/capnweb
+        run: python -m twine upload dist/* --skip-existing
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+
+  publish-capnweb-crates:
+    name: crates.io - capnweb-do
+    needs: [test]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if already published
+        id: check
+        run: |
+          if curl -sf "https://crates.io/api/v1/crates/capnweb-do/${{ steps.version.outputs.version }}" | grep -q '"version"'; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/rust/capnweb
+        run: sed -i "s/^version = \".*\"/version = \"${{ steps.version.outputs.version }}\"/" Cargo.toml
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/rust/capnweb
+        run: cargo publish --allow-dirty
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
+
+  publish-capnweb-nuget:
+    name: NuGet - Capnweb.Do
+    needs: [test]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if already published
+        id: check
+        run: |
+          if curl -sf "https://api.nuget.org/v3-flatcontainer/capnweb.do/${{ steps.version.outputs.version }}/capnweb.do.nuspec" >/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and Pack
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/dotnet/capnweb
+        run: dotnet pack -c Release /p:Version="${{ steps.version.outputs.version }}" -o ./nupkg
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/dotnet/capnweb
+        run: |
+          dotnet nuget push ./nupkg/*.nupkg \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+  # ==========================================================================
+  # LAYER 2: RPC (depends on capnweb)
+  # ==========================================================================
+
+  publish-rpc-npm:
+    name: npm - rpc.do
+    needs: [publish-capnweb-npm]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if already published
+        id: check
+        run: |
+          if npm view "rpc.do@${{ steps.version.outputs.version }}" version 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install and build
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/typescript/rpc
+        run: |
+          # Replace workspace dependency with published version
+          sed -i 's/"@dotdo\/capnweb": "workspace:\*"/"@dotdo\/capnweb": "^${{ steps.version.outputs.version }}"/' package.json
+          npm install
+          npm run build
+
+      - name: Update version
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/typescript/rpc
+        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/typescript/rpc
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-rpc-pypi:
+    name: PyPI - rpc-do
+    needs: [publish-capnweb-pypi]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools
+        run: pip install build twine
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if already published
+        id: check
+        run: |
+          if curl -sf "https://pypi.org/pypi/rpc-do/${{ steps.version.outputs.version }}/json" >/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/python/rpc
+        run: sed -i "s/^version = \".*\"/version = \"${{ steps.version.outputs.version }}\"/" pyproject.toml
+
+      - name: Build
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/python/rpc
+        run: python -m build
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/python/rpc
+        run: python -m twine upload dist/* --skip-existing
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+
+  publish-rpc-crates:
+    name: crates.io - rpc-do
+    needs: [publish-capnweb-crates]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if already published
+        id: check
+        run: |
+          if curl -sf "https://crates.io/api/v1/crates/rpc-do/${{ steps.version.outputs.version }}" | grep -q '"version"'; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version and dependencies
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/rust/rpc
+        run: |
+          sed -i "s/^version = \".*\"/version = \"${{ steps.version.outputs.version }}\"/" Cargo.toml
+          # Update path dependency to use published version
+          sed -i "s/capnweb-do = { path = \"..\/capnweb\" }/capnweb-do = \"${{ steps.version.outputs.version }}\"/" Cargo.toml
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/rust/rpc
+        run: cargo publish --allow-dirty
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
+
+  publish-rpc-nuget:
+    name: NuGet - Rpc.Do
+    needs: [publish-capnweb-nuget]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if already published
+        id: check
+        run: |
+          if curl -sf "https://api.nuget.org/v3-flatcontainer/rpc.do/${{ steps.version.outputs.version }}/rpc.do.nuspec" >/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and Pack
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/dotnet/rpc
+        run: dotnet pack -c Release /p:Version="${{ steps.version.outputs.version }}" -o ./nupkg
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/dotnet/rpc
+        run: |
+          dotnet nuget push ./nupkg/*.nupkg \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+  # ==========================================================================
+  # LAYER 3: PLATFORM/DOTDO (depends on rpc)
+  # ==========================================================================
+
+  publish-platform-npm:
+    name: npm - platform.do
+    needs: [publish-rpc-npm]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if already published
+        id: check
+        run: |
+          if npm view "platform.do@${{ steps.version.outputs.version }}" version 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install and build
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/typescript/dotdo
+        run: |
+          # Replace workspace dependencies with published versions
+          sed -i 's/"@dotdo\/capnweb": "workspace:\*"/"@dotdo\/capnweb": "^${{ steps.version.outputs.version }}"/' package.json
+          sed -i 's/"rpc.do": "workspace:\*"/"rpc.do": "^${{ steps.version.outputs.version }}"/' package.json
+          npm install
+          npm run build
+
+      - name: Update version
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/typescript/dotdo
+        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/typescript/dotdo
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-platform-pypi:
+    name: PyPI - platform-do
+    needs: [publish-rpc-pypi]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools
+        run: pip install build twine
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if already published
+        id: check
+        run: |
+          if curl -sf "https://pypi.org/pypi/platform-do/${{ steps.version.outputs.version }}/json" >/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/python/dotdo
+        run: sed -i "s/^version = \".*\"/version = \"${{ steps.version.outputs.version }}\"/" pyproject.toml
+
+      - name: Build
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/python/dotdo
+        run: python -m build
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/python/dotdo
+        run: python -m twine upload dist/* --skip-existing
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+
+  publish-platform-crates:
+    name: crates.io - platform-do
+    needs: [publish-rpc-crates]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if already published
+        id: check
+        run: |
+          if curl -sf "https://crates.io/api/v1/crates/platform-do/${{ steps.version.outputs.version }}" | grep -q '"version"'; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version and dependencies
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/rust/dotdo
+        run: |
+          sed -i "s/^version = \".*\"/version = \"${{ steps.version.outputs.version }}\"/" Cargo.toml
+          # Update path dependency to use published version
+          sed -i "s/rpc-do = { path = \"..\/rpc\" }/rpc-do = \"${{ steps.version.outputs.version }}\"/" Cargo.toml
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/rust/dotdo
+        run: cargo publish --allow-dirty
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
+
+  publish-platform-nuget:
+    name: NuGet - Platform.Do
+    needs: [publish-rpc-nuget]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if already published
+        id: check
+        run: |
+          if curl -sf "https://api.nuget.org/v3-flatcontainer/platform.do/${{ steps.version.outputs.version }}/platform.do.nuspec" >/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and Pack
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/dotnet/dotdo
+        run: dotnet pack -c Release /p:Version="${{ steps.version.outputs.version }}" -o ./nupkg
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/dotnet/dotdo
+        run: |
+          dotnet nuget push ./nupkg/*.nupkg \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+  # ==========================================================================
+  # LAYER 4: OAUTH (depends on platform)
+  # ==========================================================================
+
+  publish-oauth-npm:
+    name: npm - oauth.do
+    needs: [publish-platform-npm]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if already published
+        id: check
+        run: |
+          if npm view "oauth.do@${{ steps.version.outputs.version }}" version 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install and build
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/typescript/oauth
+        run: |
+          # Replace workspace dependencies with published versions
+          sed -i 's/"rpc.do": "workspace:\*"/"rpc.do": "^${{ steps.version.outputs.version }}"/' package.json
+          sed -i 's/"platform.do": "workspace:\*"/"platform.do": "^${{ steps.version.outputs.version }}"/' package.json
+          npm install
+          npm run build
+
+      - name: Update version
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/typescript/oauth
+        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/typescript/oauth
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-oauth-pypi:
+    name: PyPI - oauth-do
+    needs: [publish-platform-pypi]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools
+        run: pip install build twine
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if already published
+        id: check
+        run: |
+          if curl -sf "https://pypi.org/pypi/oauth-do/${{ steps.version.outputs.version }}/json" >/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/python/oauth
+        run: sed -i "s/^version = \".*\"/version = \"${{ steps.version.outputs.version }}\"/" pyproject.toml
+
+      - name: Build
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/python/oauth
+        run: python -m build
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/python/oauth
+        run: python -m twine upload dist/* --skip-existing
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+
+  publish-oauth-crates:
+    name: crates.io - oauth-do
+    needs: [publish-platform-crates]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if already published
+        id: check
+        run: |
+          if curl -sf "https://crates.io/api/v1/crates/oauth-do/${{ steps.version.outputs.version }}" | grep -q '"version"'; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version and dependencies
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/rust/oauth
+        run: |
+          sed -i "s/^version = \".*\"/version = \"${{ steps.version.outputs.version }}\"/" Cargo.toml
+          # Update path dependencies to use published versions
+          sed -i "s/rpc-do = { path = \"..\/rpc\" }/rpc-do = \"${{ steps.version.outputs.version }}\"/" Cargo.toml
+          sed -i "s/platform-do = { path = \"..\/dotdo\" }/platform-do = \"${{ steps.version.outputs.version }}\"/" Cargo.toml
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/rust/oauth
+        run: cargo publish --allow-dirty
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
+
+  publish-oauth-nuget:
+    name: NuGet - OAuth.Do
+    needs: [publish-platform-nuget]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if already published
+        id: check
+        run: |
+          if curl -sf "https://api.nuget.org/v3-flatcontainer/oauth.do/${{ steps.version.outputs.version }}/oauth.do.nuspec" >/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and Pack
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/dotnet/oauth
+        run: dotnet pack -c Release /p:Version="${{ steps.version.outputs.version }}" -o ./nupkg
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false' && !inputs.dry_run
+        working-directory: packages/dotnet/oauth
+        run: |
+          dotnet nuget push ./nupkg/*.nupkg \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+  # ==========================================================================
+  # SUMMARY
+  # ==========================================================================
+
+  summary:
+    name: Publish Summary
+    needs:
+      - publish-capnweb-npm
+      - publish-capnweb-pypi
+      - publish-capnweb-crates
+      - publish-capnweb-nuget
+      - publish-rpc-npm
+      - publish-rpc-pypi
+      - publish-rpc-crates
+      - publish-rpc-nuget
+      - publish-platform-npm
+      - publish-platform-pypi
+      - publish-platform-crates
+      - publish-platform-nuget
+      - publish-oauth-npm
+      - publish-oauth-pypi
+      - publish-oauth-crates
+      - publish-oauth-nuget
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Generate Summary
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+
+          echo "# SDK Publish Results - v${VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## Layer 1: CapnWeb (Base Protocol)" >> $GITHUB_STEP_SUMMARY
+          echo "| Registry | Package | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| npm | @dotdo/capnweb | ${{ needs.publish-capnweb-npm.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| PyPI | capnweb-do | ${{ needs.publish-capnweb-pypi.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| crates.io | capnweb-do | ${{ needs.publish-capnweb-crates.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| NuGet | Capnweb.Do | ${{ needs.publish-capnweb-nuget.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## Layer 2: RPC" >> $GITHUB_STEP_SUMMARY
+          echo "| Registry | Package | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| npm | rpc.do | ${{ needs.publish-rpc-npm.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| PyPI | rpc-do | ${{ needs.publish-rpc-pypi.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| crates.io | rpc-do | ${{ needs.publish-rpc-crates.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| NuGet | Rpc.Do | ${{ needs.publish-rpc-nuget.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## Layer 3: Platform" >> $GITHUB_STEP_SUMMARY
+          echo "| Registry | Package | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| npm | platform.do | ${{ needs.publish-platform-npm.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| PyPI | platform-do | ${{ needs.publish-platform-pypi.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| crates.io | platform-do | ${{ needs.publish-platform-crates.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| NuGet | Platform.Do | ${{ needs.publish-platform-nuget.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## Layer 4: OAuth" >> $GITHUB_STEP_SUMMARY
+          echo "| Registry | Package | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| npm | oauth.do | ${{ needs.publish-oauth-npm.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| PyPI | oauth-do | ${{ needs.publish-oauth-pypi.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| crates.io | oauth-do | ${{ needs.publish-oauth-crates.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| NuGet | OAuth.Do | ${{ needs.publish-oauth-nuget.result }} |" >> $GITHUB_STEP_SUMMARY

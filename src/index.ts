@@ -2,7 +2,10 @@
 // Licensed under the MIT license found in the LICENSE.txt file or at:
 //     https://opensource.org/license/mit
 
-import { RpcTarget as RpcTargetImpl, RpcStub as RpcStubImpl, RpcPromise as RpcPromiseImpl } from "./core.js";
+import { RpcTarget as RpcTargetImpl, RpcStub as RpcStubImpl, RpcPromise as RpcPromiseImpl, RpcPayload } from "./core.js";
+
+// Re-export RpcPayload for internal/test use
+export { RpcPayload };
 import { serialize, deserialize } from "./serialize.js";
 import { RpcTransport, RpcSession as RpcSessionImpl, RpcSessionOptions } from "./rpc.js";
 import { RpcTargetBranded, RpcCompatible, Stub, Stubify, __RPC_TARGET_BRAND } from "./types.js";
@@ -11,6 +14,7 @@ import { newWebSocketRpcSession as newWebSocketRpcSessionImpl,
 import { newHttpBatchRpcSession as newHttpBatchRpcSessionImpl,
          newHttpBatchRpcResponse, nodeHttpBatchRpcResponse } from "./batch.js";
 import { newMessagePortRpcSession as newMessagePortRpcSessionImpl } from "./messageport.js";
+import { BaseTransport } from "./transports/base.js";
 import { forceInitMap } from "./map.js";
 
 forceInitMap();
@@ -21,6 +25,7 @@ export {
   ErrorCodeName,
   CapnwebError,
   ConnectionError,
+  VersionMismatchError,
   RpcError,
   TimeoutError,
   CapabilityError,
@@ -31,9 +36,36 @@ export {
 } from "./errors.js";
 export type { ErrorCodeType, CapabilityId } from "./errors.js";
 
+// Re-export protocol version constants and utilities
+export {
+  PROTOCOL_VERSION,
+  MIN_SUPPORTED_VERSION,
+  MAX_SUPPORTED_VERSION,
+  SUPPORTED_VERSIONS,
+  parseVersion,
+  compareVersions,
+  areVersionsCompatible,
+  isVersionSupported,
+  negotiateVersion,
+  negotiateVersionWithDetails,
+  createHelloMessage,
+  createHelloAckMessage,
+  createHelloRejectMessage,
+  isHandshakeMessage,
+  formatVersion,
+} from "./version.js";
+export type {
+  ProtocolVersion,
+  VersionNegotiationResult,
+  HandshakeMessage,
+  HandshakeAckMessage,
+  HandshakeRejectMessage,
+  HandshakeMessageType,
+} from "./version.js";
+
 // Re-export public API types.
 export { serialize, deserialize, newWorkersWebSocketRpcResponse, newHttpBatchRpcResponse,
-         nodeHttpBatchRpcResponse };
+         nodeHttpBatchRpcResponse, BaseTransport };
 export type { RpcTransport, RpcSessionOptions, RpcCompatible };
 
 // Hack the type system to make RpcStub's types work nicely!
@@ -50,7 +82,7 @@ export type { RpcTransport, RpcSessionOptions, RpcCompatible };
 export type RpcStub<T extends RpcCompatible<T>> = Stub<T>;
 export const RpcStub: {
   new <T extends RpcCompatible<T>>(value: T): RpcStub<T>;
-} = <any>RpcStubImpl;
+} = RpcStubImpl as typeof RpcStub;
 
 /**
  * Represents the result of an RPC call.
@@ -73,12 +105,42 @@ export const RpcStub: {
 export type RpcPromise<T extends RpcCompatible<T>> = Stub<T> & Promise<Stubify<T>>;
 export const RpcPromise: {
   // Note: Cannot construct directly!
-} = <any>RpcPromiseImpl;
+} = RpcPromiseImpl as typeof RpcPromise;
 
 /**
  * Use to construct an `RpcSession` on top of a custom `RpcTransport`.
  *
  * Most people won't use this. You only need it if you've implemented your own `RpcTransport`.
+ *
+ * ## Session Lifecycle
+ *
+ * An RpcSession goes through two states:
+ * 1. **ACTIVE** - Session is operational, RPC calls can be made
+ * 2. **CLOSED** - Session has been shut down, RPC calls will throw ConnectionError
+ *
+ * A session can be closed by:
+ * - Calling `close()` explicitly
+ * - Disposing the main stub via `Symbol.dispose` (using the `using` declaration)
+ * - Transport disconnection or error
+ * - Peer sending an abort message
+ *
+ * @example
+ * ```typescript
+ * // Create and use a session
+ * const session = new RpcSession(transport, localMain);
+ * const stub = session.getRemoteMain();
+ *
+ * // Make RPC calls
+ * const result = await stub.someMethod();
+ *
+ * // Close when done
+ * session.close();
+ *
+ * // Or use with Symbol.dispose on the stub
+ * const stub = session.getRemoteMain();
+ * await stub.someMethod();
+ * stub[Symbol.dispose]();  // Also closes the session
+ * ```
  */
 export interface RpcSession<T extends RpcCompatible<T> = undefined> {
   getRemoteMain(): RpcStub<T>;
@@ -87,11 +149,105 @@ export interface RpcSession<T extends RpcCompatible<T> = undefined> {
   // Waits until the peer is not waiting on any more promise resolutions from us. This is useful
   // in particular to decide when a batch is complete.
   drain(): Promise<void>;
+
+  /**
+   * Close the session gracefully, releasing all resources.
+   *
+   * Performs a clean shutdown:
+   * - Marks the session as closed (`isClosed` becomes true)
+   * - Rejects all pending RPC calls with `ConnectionError`
+   * - Clears import/export tables, disposing all stubs
+   * - Resolves the `onClosed()` promise
+   *
+   * Safe to call multiple times (subsequent calls are no-ops).
+   * Works correctly with `Symbol.dispose` on the main stub.
+   *
+   * @param reason Optional error to propagate as the close reason
+   */
+  close(reason?: Error): void;
+
+  /**
+   * Returns a promise that resolves when the session closes.
+   *
+   * Resolves with:
+   * - `undefined` for a clean close (no error)
+   * - `Error` for abnormal close (transport error, peer abort, etc.)
+   *
+   * If the session is already closed, resolves immediately.
+   */
+  onClosed(): Promise<Error | undefined>;
+
+  /**
+   * Returns true if the session has been closed.
+   *
+   * Once closed, a session cannot be reopened. Any attempts to make RPC
+   * calls will result in `ConnectionError`.
+   */
+  readonly isClosed: boolean;
+
+  // ==========================================================================
+  // Backpressure methods
+  // ==========================================================================
+
+  /**
+   * Returns the current number of pending (unresolved) RPC calls.
+   *
+   * This is useful for monitoring session activity and implementing
+   * application-level flow control.
+   */
+  getPendingCallCount(): number;
+
+  /**
+   * Returns true if backpressure is currently active.
+   *
+   * Backpressure is active when the pending call count has reached
+   * the `maxPendingCalls` limit configured in session options.
+   * If no limit is configured, this always returns false.
+   */
+  hasBackpressure(): boolean;
+
+  /**
+   * Returns a promise that resolves when pending call count drops below limit.
+   *
+   * If there's no backpressure (or no limit is configured), resolves immediately.
+   * This is useful for implementing flow control when making many calls.
+   */
+  waitForDrain(): Promise<void>;
+
+  // ==========================================================================
+  // Version handshake methods
+  // ==========================================================================
+
+  /**
+   * Returns a promise that resolves when version handshake completes.
+   *
+   * If handshake is disabled (the default), resolves immediately.
+   * If handshake is enabled, waits until the protocol version has been
+   * negotiated with the peer.
+   */
+  waitForHandshake(): Promise<void>;
+
+  /**
+   * Returns the negotiated protocol version.
+   *
+   * If handshake is disabled or not yet complete, returns the current
+   * implementation's protocol version (e.g., "1.0").
+   */
+  getNegotiatedVersion(): string;
+
+  /**
+   * Returns true if version handshake has completed.
+   *
+   * If handshake is disabled (the default), always returns true.
+   * If handshake is enabled, returns true after negotiation completes.
+   */
+  isHandshakeComplete(): boolean;
 }
 export const RpcSession: {
   new <T extends RpcCompatible<T> = undefined>(
-      transport: RpcTransport, localMain?: any, options?: RpcSessionOptions): RpcSession<T>;
-} = <any>RpcSessionImpl;
+      transport: RpcTransport, localMain?: unknown, options?: RpcSessionOptions,
+      isInitiator?: boolean): RpcSession<T>;
+} = RpcSessionImpl as typeof RpcSession;
 
 // RpcTarget needs some hackage too to brand it properly and account for the implementation
 // conditionally being imported from "cloudflare:workers".
@@ -123,8 +279,8 @@ interface Empty {}
  * interface exposed from the peer.
  */
 export let newWebSocketRpcSession:<T extends RpcCompatible<T> = Empty>
-    (webSocket: WebSocket | string, localMain?: any, options?: RpcSessionOptions) => RpcStub<T> =
-    <any>newWebSocketRpcSessionImpl;
+    (webSocket: WebSocket | string, localMain?: unknown, options?: RpcSessionOptions) => RpcStub<T> =
+    newWebSocketRpcSessionImpl as typeof newWebSocketRpcSession;
 
 /**
  * Initiate an HTTP batch session from the client side.
@@ -135,7 +291,7 @@ export let newWebSocketRpcSession:<T extends RpcCompatible<T> = Empty>
  */
 export let newHttpBatchRpcSession:<T extends RpcCompatible<T>>
     (urlOrRequest: string | Request, options?: RpcSessionOptions) => RpcStub<T> =
-    <any>newHttpBatchRpcSessionImpl;
+    newHttpBatchRpcSessionImpl as typeof newHttpBatchRpcSession;
 
 /**
  * Initiate an RPC session over a MessagePort, which is particularly useful for communicating
@@ -143,8 +299,8 @@ export let newHttpBatchRpcSession:<T extends RpcCompatible<T>>
  * on its own end of the MessageChannel.
  */
 export let newMessagePortRpcSession:<T extends RpcCompatible<T> = Empty>
-    (port: MessagePort, localMain?: any, options?: RpcSessionOptions) => RpcStub<T> =
-    <any>newMessagePortRpcSessionImpl;
+    (port: MessagePort, localMain?: unknown, options?: RpcSessionOptions) => RpcStub<T> =
+    newMessagePortRpcSessionImpl as typeof newMessagePortRpcSession;
 
 /**
  * Options for configuring CORS behavior in `newWorkersRpcResponse`.
@@ -187,6 +343,10 @@ export interface WorkersRpcResponseOptions {
 
 /**
  * Helper function to compute CORS headers based on the request and options.
+ *
+ * SECURITY: Never allows credentials with null origin. The "null" origin is shared by
+ * sandboxed iframes, file:// URLs, data: URLs, etc. Allowing credentials with null origin
+ * is a CSRF vulnerability because it doesn't identify a unique origin.
  */
 function computeCorsHeaders(
   request: Request,
@@ -201,6 +361,13 @@ function computeCorsHeaders(
 
   const requestOrigin = request.headers.get("Origin");
   const { allowedOrigins, allowCredentials } = options;
+
+  // SECURITY: Never allow credentials with null origin
+  // The "null" origin is shared by sandboxed iframes, file://, data: URLs, etc.
+  // Allowing credentials with null origin is a CSRF vulnerability.
+  if (allowCredentials && requestOrigin === "null") {
+    return headers; // Do not set any CORS headers
+  }
 
   if (allowedOrigins === "*") {
     // Wildcard mode
@@ -288,13 +455,27 @@ function applyCorsHeaders(response: Response, corsHeaders: Headers): Response {
  */
 export async function newWorkersRpcResponse(
   request: Request,
-  localMain: any,
+  localMain: unknown,
   options?: WorkersRpcResponseOptions
 ) {
   // Compute CORS headers once based on request and options
   const corsHeaders = computeCorsHeaders(request, options);
 
-  if (request.method === "POST") {
+  if (request.method === "OPTIONS") {
+    // Handle CORS preflight request
+    const origin = corsHeaders.get("Access-Control-Allow-Origin");
+    if (origin) {
+      // Origin is allowed, return preflight success
+      const preflightHeaders = new Headers(corsHeaders);
+      preflightHeaders.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+      preflightHeaders.set("Access-Control-Allow-Headers", "Content-Type");
+      preflightHeaders.set("Access-Control-Max-Age", "86400");
+      return new Response(null, { status: 204, headers: preflightHeaders });
+    } else {
+      // Origin not allowed or no CORS configured
+      return new Response("This endpoint only accepts POST or WebSocket requests.", { status: 400 });
+    }
+  } else if (request.method === "POST") {
     let response = await newHttpBatchRpcResponse(request, localMain);
     return applyCorsHeaders(response, corsHeaders);
   } else if (request.headers.get("Upgrade")?.toLowerCase() === "websocket") {

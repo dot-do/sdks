@@ -382,7 +382,8 @@ describe("RpcStub instanceof checks", () => {
   it("RpcStub can wrap functions", async () => {
     const func = (x: number) => x * 2;
     const stub = new RpcStub(func);
-    expect(await stub(21)).toBe(42);
+    // Type system doesn't recognize the stub as callable, but it is at runtime
+    expect(await (stub as unknown as (x: number) => Promise<number>)(21)).toBe(42);
   });
 
   it("RpcStub toString returns proper identifier", () => {
@@ -493,8 +494,8 @@ describe("RpcSession onRpcBroken", () => {
 
     const stub = client.getRemoteMain();
 
-    let brokenError: any = null;
-    stub.onRpcBroken((error) => {
+    let brokenError: unknown = null;
+    stub.onRpcBroken((error: unknown) => {
       brokenError = error;
     });
 
@@ -503,7 +504,7 @@ describe("RpcSession onRpcBroken", () => {
     await pumpMicrotasks();
 
     expect(brokenError).not.toBeNull();
-    expect(brokenError.message).toBe("test disconnect");
+    expect((brokenError as Error).message).toBe("test disconnect");
   });
 
   it("onRpcBroken callback is called for error resolutions", async () => {
@@ -517,8 +518,8 @@ describe("RpcSession onRpcBroken", () => {
 
     const errorPromise = stub.throwError();
 
-    let brokenError: any = null;
-    errorPromise.onRpcBroken((error) => {
+    let brokenError: unknown = null;
+    errorPromise.onRpcBroken((error: unknown) => {
       brokenError = error;
     });
 
@@ -526,7 +527,7 @@ describe("RpcSession onRpcBroken", () => {
     await errorPromise.catch(() => {});
 
     expect(brokenError).not.toBeNull();
-    expect(brokenError.message).toBe("test error");
+    expect((brokenError as Error).message).toBe("test error");
 
     // Clean up
     stub[Symbol.dispose]();
