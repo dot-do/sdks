@@ -51,8 +51,11 @@ class WebSocketTransport extends BaseTransport {
     this.#webSocket = webSocket;
 
     if (webSocket.readyState === WebSocket.CONNECTING) {
+      // Start in connecting state, queue messages until open
       this.#sendQueue = [];
       webSocket.addEventListener("open", event => {
+        // Transition to connected state
+        this.transitionToConnected();
         try {
           for (let message of this.#sendQueue!) {
             webSocket.send(message);
@@ -62,7 +65,12 @@ class WebSocketTransport extends BaseTransport {
         }
         this.#sendQueue = undefined;
       });
+    } else if (webSocket.readyState === WebSocket.OPEN) {
+      // Already open (e.g., server-side after accept()), transition to connected immediately
+      this.transitionToConnected();
     }
+    // Note: If readyState is CLOSING or CLOSED, we stay in connecting state
+    // until we receive the close/error event which will transition to error
 
     webSocket.addEventListener("message", (event: MessageEvent<unknown>) => {
       if (this.error) {

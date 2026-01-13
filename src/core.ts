@@ -59,6 +59,9 @@ export {
 
   // target-hook.ts
   TargetStubHook,
+
+  // promise-delegating-hook.ts
+  PromiseDelegatingStubHook,
 } from "./core/index.js";
 
 export type {

@@ -191,6 +191,22 @@ export type RpcSessionOptions = {
    * - "block": Block until there's room in the queue
    */
   queueFullBehavior?: "reject" | "block";
+
+  /**
+   * Maximum message size in bytes for incoming messages.
+   * Messages larger than this will be rejected with a SerializationError before parsing.
+   * Must be a positive integer (>= 1).
+   * Default: 10MB (10 * 1024 * 1024 bytes)
+   */
+  maxMessageSize?: number;
+
+  /**
+   * Maximum recursion depth for nested objects/arrays in messages.
+   * Messages with deeper nesting will be rejected with a SerializationError.
+   * Must be a positive integer (>= 1).
+   * Default: 100 levels
+   */
+  maxRecursionDepth?: number;
 };
 
 // ============================================================================
@@ -1183,14 +1199,14 @@ class RpcSessionImpl implements Importer, Exporter, ImportExportSession {
 
   // Process a single raw message. Returns true if message was valid, false if error.
   #processMessage(rawMessage: string): boolean {
-    // Check message size before parsing
-    checkMessageSize(rawMessage);
+    // Check message size before parsing (use custom limit if specified)
+    checkMessageSize(rawMessage, this.#options.maxMessageSize);
 
     let msg = JSON.parse(rawMessage);
     if (this.#abortReason) return true;  // abort in progress, skip processing
 
-    // Check recursion depth after parsing
-    checkRecursionDepth(msg);
+    // Check recursion depth after parsing (use custom limit if specified)
+    checkRecursionDepth(msg, this.#options.maxRecursionDepth);
 
     // Handle handshake messages first
     if (isHandshakeMessage(msg)) {
@@ -1374,9 +1390,31 @@ export class RpcSession<T = unknown> {
   #reconnectAttempt: number = 0;
   #reconnectCancelled: boolean = false;
 
+  // Expose options for testing
+  options: RpcSessionOptions;
+
   constructor(transport: RpcTransport, localMain?: unknown, options: RpcSessionOptions = {},
               isInitiator: boolean = true) {
+    // Validate maxMessageSize if provided
+    if (options.maxMessageSize !== undefined) {
+      if (!Number.isInteger(options.maxMessageSize) || options.maxMessageSize <= 0) {
+        throw new Error(
+          `maxMessageSize must be a positive integer, got ${options.maxMessageSize}`
+        );
+      }
+    }
+
+    // Validate maxRecursionDepth if provided
+    if (options.maxRecursionDepth !== undefined) {
+      if (!Number.isInteger(options.maxRecursionDepth) || options.maxRecursionDepth <= 0) {
+        throw new Error(
+          `maxRecursionDepth must be a positive integer, got ${options.maxRecursionDepth}`
+        );
+      }
+    }
+
     this.#options = options;
+    this.options = options;  // Expose for testing
     this.#transport = transport;
     this.#localMain = localMain;
     this.#isInitiator = isInitiator;

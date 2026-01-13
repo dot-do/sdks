@@ -33,6 +33,9 @@ class MessagePortTransport extends BaseTransport {
     // Start listening for messages
     port.start();
 
+    // MessagePort is immediately ready after start(), transition to connected
+    this.transitionToConnected();
+
     port.addEventListener("message", (event: MessageEvent<unknown>) => {
       if (this.error) {
         // Ignore further messages.

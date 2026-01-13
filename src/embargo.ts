@@ -2,7 +2,7 @@
 // Licensed under the MIT license found in the LICENSE.txt file or at:
 //     https://opensource.org/license/mit
 
-import { StubHook, RpcPayload, PropertyPath } from "./core.js";
+import { StubHook, RpcPayload, PropertyPath, PromiseDelegatingStubHook } from "./core.js";
 
 // EmbargoedStubHook wraps a resolution that is under embargo due to pending pipelined calls.
 // It maintains e-order by ensuring that calls made through this hook during the embargo period
@@ -127,91 +127,14 @@ export class EmbargoedStubHook extends StubHook {
 // EmbargoedCallStubHook wraps a call made during an embargo period.
 // It waits for the embargo to lift before delivering the call result.
 //
-// RACE CONDITION FIX: Similar to EmbargoedStubHook, we use a synchronous resolution
-// check pattern. The #resolvedHook field is set in the .then() callback, which runs
-// in the same microtask as the promise resolution, eliminating the race window.
-export class EmbargoedCallStubHook extends StubHook {
-  #promise: Promise<StubHook>;
-  // Stores the resolved hook synchronously when the promise resolves.
-  // undefined means not yet resolved. This is set in the .then() callback.
-  #resolvedHook: StubHook | undefined = undefined;
-
+// Extends PromiseDelegatingStubHook which implements the synchronous resolution
+// check pattern to eliminate race conditions between promise resolution and flag setting.
+export class EmbargoedCallStubHook extends PromiseDelegatingStubHook {
   constructor(promise: Promise<StubHook>) {
-    super();
-    this.#promise = promise.then(res => { this.#resolvedHook = res; return res; });
+    super(promise);
   }
 
-  // Synchronously check if the promise has resolved.
-  #isResolved(): boolean {
-    return this.#resolvedHook !== undefined;
-  }
-
-  call(path: PropertyPath, args: RpcPayload): StubHook {
-    if (this.#isResolved()) {
-      return this.#resolvedHook!.call(path, args);
-    }
-    // Chain calls through the promise to maintain e-order
-    args.ensureDeepCopied();
-    return new EmbargoedCallStubHook(this.#promise.then(hook => hook.call(path, args)));
-  }
-
-  map(path: PropertyPath, captures: StubHook[], instructions: unknown[]): StubHook {
-    if (this.#isResolved()) {
-      return this.#resolvedHook!.map(path, captures, instructions);
-    }
-    return new EmbargoedCallStubHook(this.#promise.then(
-      hook => hook.map(path, captures, instructions),
-      err => {
-        for (let cap of captures) {
-          cap.dispose();
-        }
-        throw err;
-      }
-    ));
-  }
-
-  get(path: PropertyPath): StubHook {
-    if (this.#isResolved()) {
-      return this.#resolvedHook!.get(path);
-    }
-    return new EmbargoedCallStubHook(this.#promise.then(hook => hook.get(path)));
-  }
-
-  dup(): StubHook {
-    if (this.#isResolved()) {
-      return this.#resolvedHook!.dup();
-    }
-    return new EmbargoedCallStubHook(this.#promise.then(hook => hook.dup()));
-  }
-
-  pull(): RpcPayload | Promise<RpcPayload> {
-    if (this.#isResolved()) {
-      return this.#resolvedHook!.pull();
-    }
-    return this.#promise.then(hook => hook.pull());
-  }
-
-  ignoreUnhandledRejections(): void {
-    if (this.#isResolved()) {
-      this.#resolvedHook!.ignoreUnhandledRejections();
-    } else {
-      this.#promise.then(res => res.ignoreUnhandledRejections(), () => {});
-    }
-  }
-
-  dispose(): void {
-    if (this.#isResolved()) {
-      this.#resolvedHook!.dispose();
-    } else {
-      this.#promise.then(hook => hook.dispose(), () => {});
-    }
-  }
-
-  onBroken(callback: (error: unknown) => void): void {
-    if (this.#isResolved()) {
-      this.#resolvedHook!.onBroken(callback);
-    } else {
-      this.#promise.then(hook => hook.onBroken(callback), callback);
-    }
+  protected createDelegatingHook(promise: Promise<StubHook>): PromiseDelegatingStubHook {
+    return new EmbargoedCallStubHook(promise);
   }
 }

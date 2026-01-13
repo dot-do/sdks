@@ -2,7 +2,7 @@
 // Licensed under the MIT license found in the LICENSE.txt file or at:
 //     https://opensource.org/license/mit
 
-import { StubHook, RpcPayload, PropertyPath, ErrorStubHook } from "./core.js";
+import { StubHook, RpcPayload, PropertyPath, ErrorStubHook, PromiseDelegatingStubHook } from "./core.js";
 import { ExportId, ImportId } from "./serialize.js";
 import { EmbargoedStubHook } from "./embargo.js";
 
@@ -451,22 +451,24 @@ export class RpcMainHook extends RpcImportHook {
  * A StubHook that wraps a promise for another StubHook.
  * Used when a call is blocked due to backpressure and needs to wait for capacity.
  * All operations are deferred until the underlying hook is resolved.
+ *
+ * Extends PromiseDelegatingStubHook but adds:
+ * - Tracking of disposed state to dispose inner hook when it resolves
+ * - Queuing of onBroken callbacks until the inner hook is available
+ * - Reject handler support for timeout handling
  */
-export class DeferredImportHook extends StubHook {
-  #innerHookPromise: Promise<StubHook>;
-  #innerHook?: StubHook;
+export class DeferredImportHook extends PromiseDelegatingStubHook {
   #disposed = false;
   #onBrokenCallbacks: ((error: unknown) => void)[] = [];
   #rejectHook?: (error: unknown) => void;
 
   constructor(innerHookPromise: Promise<StubHook>) {
-    super();
-    this.#innerHookPromise = innerHookPromise;
+    super(innerHookPromise);
 
-    // When the inner hook resolves, save it and register onBroken callbacks
+    // When the inner hook resolves, register pending onBroken callbacks
+    // and handle disposed-while-waiting case
     innerHookPromise.then(
       hook => {
-        this.#innerHook = hook;
         // Register any pending onBroken callbacks
         for (const callback of this.#onBrokenCallbacks) {
           hook.onBroken(callback);
@@ -490,6 +492,10 @@ export class DeferredImportHook extends StubHook {
     );
   }
 
+  protected createDelegatingHook(promise: Promise<StubHook>): PromiseDelegatingStubHook {
+    return new DeferredImportHook(promise);
+  }
+
   /**
    * Set a rejection handler that can be called to reject this deferred hook.
    * Used for timeout handling.
@@ -507,58 +513,19 @@ export class DeferredImportHook extends StubHook {
     }
   }
 
-  call(path: PropertyPath, args: RpcPayload): StubHook {
-    // Create a deferred hook that waits for this hook to resolve, then calls on it
-    return new DeferredImportHook(
-      this.#innerHookPromise.then(hook => hook.call(path, args))
-    );
-  }
-
-  map(path: PropertyPath, captures: StubHook[], instructions: unknown[]): StubHook {
-    return new DeferredImportHook(
-      this.#innerHookPromise.then(hook => hook.map(path, captures, instructions))
-    );
-  }
-
-  get(path: PropertyPath): StubHook {
-    return new DeferredImportHook(
-      this.#innerHookPromise.then(hook => hook.get(path))
-    );
-  }
-
-  dup(): StubHook {
-    return new DeferredImportHook(
-      this.#innerHookPromise.then(hook => hook.dup())
-    );
-  }
-
-  pull(): RpcPayload | Promise<RpcPayload> {
-    // Wait for the inner hook to resolve, then pull from it
-    // If the inner hook promise rejects (e.g., timeout), the rejection propagates
-    return this.#innerHookPromise.then(
-      hook => hook.pull(),
-      error => {
-        // Re-throw the error to propagate it
-        throw error;
-      }
-    );
-  }
-
-  ignoreUnhandledRejections(): void {
-    // Will be called on inner hook when it resolves
-    this.#innerHookPromise.then(hook => hook.ignoreUnhandledRejections()).catch(() => {});
-  }
-
-  dispose(): void {
+  // Override dispose to track disposed state for cleanup when inner hook resolves
+  override dispose(): void {
     this.#disposed = true;
-    if (this.#innerHook) {
-      this.#innerHook.dispose();
+    if (this.isResolved()) {
+      this.getResolvedHook().dispose();
     }
+    // If not resolved, the constructor's .then() will dispose when it resolves
   }
 
-  onBroken(callback: (error: unknown) => void): void {
-    if (this.#innerHook) {
-      this.#innerHook.onBroken(callback);
+  // Override onBroken to queue callbacks until inner hook is available
+  override onBroken(callback: (error: unknown) => void): void {
+    if (this.isResolved()) {
+      this.getResolvedHook().onBroken(callback);
     } else {
       this.#onBrokenCallbacks.push(callback);
     }

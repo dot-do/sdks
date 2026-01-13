@@ -16,31 +16,40 @@ export default defineConfig({
         test: {
           name: 'node',
           include: [
-            '__tests__/index.test.ts',
-            '__tests__/cors.test.ts',
-            '__tests__/error-handling.test.ts',
-            '__tests__/serialize.test.ts',
-            '__tests__/rpc.test.ts',
-            '__tests__/websocket.test.ts',
-            '__tests__/batch.test.ts',
-            '__tests__/messageport.test.ts',
-            '__tests__/map.test.ts',
-            '__tests__/edge-cases.test.ts',
-            '__tests__/version.test.ts',
-            '__tests__/session-lifecycle.test.ts',
-            '__tests__/error-reporting.test.ts',
-            '__tests__/timeout.test.ts',
-            '__tests__/memory.test.ts',
-            '__tests__/message-validation.test.ts',
-            '__tests__/concurrency.test.ts',
-            '__tests__/backpressure.test.ts',
-            '__tests__/embargo-race.test.ts',
-            '__tests__/session-types.test.ts',
-            '__tests__/message-processor.test.ts',
-            '__tests__/abort-race.test.ts',
-            '__tests__/capability-graph.test.ts',
-            '__tests__/reconnection.test.ts',
-            '__tests__/protocol-security.test.ts',
+            // Core tests
+            '__tests__/core/rpc.test.ts',
+            '__tests__/core/serialize.test.ts',
+            '__tests__/core/map.test.ts',
+            '__tests__/core/message-processor.test.ts',
+            '__tests__/core/capability-graph.test.ts',
+            '__tests__/core/edge-cases.test.ts',
+            '__tests__/core/error-handling.test.ts',
+            '__tests__/core/error-reporting.test.ts',
+            '__tests__/core/message-validation.test.ts',
+            '__tests__/core/abort-race.test.ts',
+            '__tests__/core/embargo-race.test.ts',
+            '__tests__/core/session-types.test.ts',
+            '__tests__/core/version.test.ts',
+            '__tests__/core/validation-config.test.ts',
+            '__tests__/core/type-registry.test.ts',
+            '__tests__/core/message-plugins.test.ts',
+            // Transport tests
+            '__tests__/transport/websocket.test.ts',
+            '__tests__/transport/messageport.test.ts',
+            '__tests__/transport/batch.test.ts',
+            // Backpressure tests
+            '__tests__/backpressure/backpressure.test.ts',
+            // Security tests
+            '__tests__/security/cors.test.ts',
+            '__tests__/security/protocol-security.test.ts',
+            // Lifecycle tests
+            '__tests__/lifecycle/session-lifecycle.test.ts',
+            '__tests__/lifecycle/reconnection.test.ts',
+            '__tests__/lifecycle/timeout.test.ts',
+            '__tests__/lifecycle/memory.test.ts',
+            '__tests__/lifecycle/concurrency.test.ts',
+            // Integration tests
+            '__tests__/integration/index.test.ts',
           ],
           environment: 'node',
         },
@@ -50,7 +59,7 @@ export default defineConfig({
       {
         test: {
           name: 'workerd',
-          include: ['__tests__/index.test.ts', '__tests__/workerd.test.ts'],
+          include: ['__tests__/integration/index.test.ts', '__tests__/integration/workerd.test.ts'],
           pool: '@cloudflare/vitest-pool-workers',
           poolOptions: {
             workers: {
@@ -93,7 +102,7 @@ export default defineConfig({
       {
         test: {
           name: 'browsers-with-using',
-          include: ['__tests__/index.test.ts'],
+          include: ['__tests__/integration/index.test.ts'],
           browser: {
             enabled: true,
             provider: 'playwright',
@@ -114,7 +123,7 @@ export default defineConfig({
         },
         test: {
           name: 'browsers-without-using',
-          include: ['__tests__/index.test.ts'],
+          include: ['__tests__/integration/index.test.ts'],
           browser: {
             enabled: true,
             provider: 'playwright',

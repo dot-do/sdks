@@ -38,3 +38,4 @@ export { RpcPromise } from "./promise.js";
 // Re-export StubHook implementations
 export { ValueStubHook, PayloadStubHook, PromiseStubHook } from "./payload-hook.js";
 export { TargetStubHook } from "./target-hook.js";
+export { PromiseDelegatingStubHook } from "./promise-delegating-hook.js";

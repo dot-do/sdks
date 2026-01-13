@@ -160,15 +160,16 @@ export function validateMessage(msg: unknown): void {
  * Checks the size of a message string and throws if it exceeds the limit.
  *
  * @param messageStr - The raw message string to check
- * @throws SerializationError if the message exceeds MAX_MESSAGE_SIZE
+ * @param maxSize - Maximum allowed size in bytes (default: MAX_MESSAGE_SIZE)
+ * @throws SerializationError if the message exceeds the size limit
  */
-export function checkMessageSize(messageStr: string): void {
-  if (messageStr.length > MAX_MESSAGE_SIZE) {
+export function checkMessageSize(messageStr: string, maxSize: number = MAX_MESSAGE_SIZE): void {
+  if (messageStr.length > maxSize) {
     const sizeMB = (messageStr.length / (1024 * 1024)).toFixed(2);
-    const limitMB = (MAX_MESSAGE_SIZE / (1024 * 1024)).toFixed(0);
+    const limitMB = (maxSize / (1024 * 1024)).toFixed(0);
     throw new SerializationError(
       `Message size limit exceeded: message is ${sizeMB}MB (${messageStr.length} bytes), ` +
-      `but maximum allowed is ${limitMB}MB (${MAX_MESSAGE_SIZE} bytes)`,
+      `but maximum allowed is ${limitMB}MB (${maxSize} bytes)`,
       true
     );
   }

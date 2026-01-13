@@ -14,7 +14,7 @@ import { newWebSocketRpcSession as newWebSocketRpcSessionImpl,
 import { newHttpBatchRpcSession as newHttpBatchRpcSessionImpl,
          newHttpBatchRpcResponse, nodeHttpBatchRpcResponse } from "./batch.js";
 import { newMessagePortRpcSession as newMessagePortRpcSessionImpl } from "./messageport.js";
-import { BaseTransport } from "./transports/base.js";
+import { BaseTransport, TransportState, TransportStateCallback } from "./transports/base.js";
 import { forceInitMap } from "./map.js";
 
 forceInitMap();
@@ -66,7 +66,8 @@ export type {
 // Re-export public API types.
 export { serialize, deserialize, newWorkersWebSocketRpcResponse, newHttpBatchRpcResponse,
          nodeHttpBatchRpcResponse, BaseTransport };
-export type { RpcTransport, RpcSessionOptions, RpcCompatible, SessionState, ReconnectionStrategy };
+export type { RpcTransport, RpcSessionOptions, RpcCompatible, SessionState, ReconnectionStrategy,
+         TransportState, TransportStateCallback };
 
 // Hack the type system to make RpcStub's types work nicely!
 /**
