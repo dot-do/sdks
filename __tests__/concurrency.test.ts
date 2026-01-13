@@ -865,8 +865,8 @@ describe("State guards prevent operations after close/abort", () => {
     clientTransport.forceReceiveError(new Error("transport error"));
     await pumpMicrotasks();
 
-    // New call should fail
-    await expect(stub.getValue()).rejects.toThrow();
+    // New call should fail (now throws synchronously due to abort check)
+    expect(() => stub.getValue()).toThrow();
   });
 
   it("should not allow operations on disposed child stubs", async () => {

@@ -7,7 +7,7 @@ import { RpcTarget as RpcTargetImpl, RpcStub as RpcStubImpl, RpcPromise as RpcPr
 // Re-export RpcPayload for internal/test use
 export { RpcPayload };
 import { serialize, deserialize } from "./serialize.js";
-import { RpcTransport, RpcSession as RpcSessionImpl, RpcSessionOptions } from "./rpc.js";
+import { RpcTransport, RpcSession as RpcSessionImpl, RpcSessionOptions, SessionState, ReconnectionStrategy } from "./rpc.js";
 import { RpcTargetBranded, RpcCompatible, Stub, Stubify, __RPC_TARGET_BRAND } from "./types.js";
 import { newWebSocketRpcSession as newWebSocketRpcSessionImpl,
          newWorkersWebSocketRpcResponse } from "./websocket.js";
@@ -66,7 +66,7 @@ export type {
 // Re-export public API types.
 export { serialize, deserialize, newWorkersWebSocketRpcResponse, newHttpBatchRpcResponse,
          nodeHttpBatchRpcResponse, BaseTransport };
-export type { RpcTransport, RpcSessionOptions, RpcCompatible };
+export type { RpcTransport, RpcSessionOptions, RpcCompatible, SessionState, ReconnectionStrategy };
 
 // Hack the type system to make RpcStub's types work nicely!
 /**
@@ -242,6 +242,26 @@ export interface RpcSession<T extends RpcCompatible<T> = undefined> {
    * If handshake is enabled, returns true after negotiation completes.
    */
   isHandshakeComplete(): boolean;
+
+  // ==========================================================================
+  // Session reconnection methods
+  // ==========================================================================
+
+  /**
+   * Returns the current session state.
+   *
+   * - "active": Session is operational, RPC calls can be made
+   * - "reconnecting": Session is attempting to reconnect after a disconnect
+   * - "closed": Session has been shut down, RPC calls will throw ConnectionError
+   */
+  getState(): SessionState;
+
+  /**
+   * Returns the session ID if one was configured.
+   *
+   * The session ID is used for session resumption after reconnection.
+   */
+  getSessionId(): string | undefined;
 }
 export const RpcSession: {
   new <T extends RpcCompatible<T> = undefined>(

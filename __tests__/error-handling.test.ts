@@ -3,7 +3,7 @@
 //     https://opensource.org/license/mit
 
 import { expect, it, describe, vi } from "vitest"
-import { RpcSession, type RpcSessionOptions, RpcTransport, RpcTarget, RpcStub } from "../src/index.js"
+import { RpcSession, type RpcSessionOptions, RpcTransport, RpcTarget, RpcStub, ConnectionError } from "../src/index.js"
 import { Counter, TestTarget } from "./test-util.js";
 
 /**
@@ -216,7 +216,8 @@ describe("error handling - silent suppression fixes", () => {
       const client = new RpcSession<TestTarget>(clientTransport);
       const server = new RpcSession<undefined>(serverTransport, new TestTarget());
 
-      const testError = new Error("Specific test error");
+      // Use ConnectionError directly to avoid wrapping (raw Errors are wrapped in ConnectionError)
+      const testError = new ConnectionError("Specific test error");
       clientTransport.forceReceiveError(testError);
 
       await pumpMicrotasks();

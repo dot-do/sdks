@@ -17,7 +17,7 @@ import {
   type HandshakeAckMessage,
   type HandshakeRejectMessage,
 } from "./version.js";
-import { VersionMismatchError, ConnectionError, TimeoutError, BackpressureError } from "./errors.js";
+import { VersionMismatchError, ConnectionError, TimeoutError, BackpressureError, CapnwebError } from "./errors.js";
 import { validateMessage, checkMessageSize, checkRecursionDepth } from "./message-validation.js";
 import {
   ExportTableEntry,
@@ -91,6 +91,17 @@ export interface RpcTransport {
    * peer, so if that is dropped, the peer may have less information about what happened.)
    */
   abort?(reason: unknown): void;
+
+  /**
+   * Optional: If set to a truthy value, indicates the transport has encountered an error.
+   * This allows the session to detect transport errors synchronously before attempting sends,
+   * preventing race conditions where sends could occur between the error occurring and
+   * the abort being processed.
+   *
+   * Transports should set this property immediately when they detect an error, before
+   * rejecting any pending receive() promises.
+   */
+  error?: unknown;
 }
 
 // ============================================================================
@@ -255,7 +266,14 @@ class RpcSessionImpl implements Importer, Exporter, ImportExportSession {
       this.#handshakeComplete = true;
     }
 
-    this.#readLoop(abortPromise).catch(err => this.abort(err));
+    this.#readLoop(abortPromise).catch(err => {
+      // Preserve any CapnwebError subclass (SerializationError, etc.)
+      // Only wrap raw errors in ConnectionError for transport failures
+      const error = err instanceof CapnwebError
+        ? err
+        : new ConnectionError(err instanceof Error ? err.message : String(err));
+      this.abort(error);
+    });
 
     // If we're the initiator and handshake is enabled, send hello message
     if (options.enableVersionHandshake && isInitiator) {
@@ -569,7 +587,8 @@ class RpcSessionImpl implements Importer, Exporter, ImportExportSession {
       this.#onClosedResolver.resolve(undefined);
     }
     // Send abort message to peer so they can dispose their exported targets
-    this.abort(new Error("RPC session was shut down by disposing the main stub"), true);
+    // Wrap in ConnectionError for consistent error types
+    this.abort(new ConnectionError("RPC session was shut down by disposing the main stub"), true);
   }
 
   exportStub(hook: StubHook): ExportId {
@@ -764,6 +783,22 @@ class RpcSessionImpl implements Importer, Exporter, ImportExportSession {
       return;
     }
 
+    // Check if the transport has detected an error synchronously.
+    // This prevents sends from occurring after the transport encounters an error
+    // but before the session's abort() is called.
+    if (this.#transport.error !== undefined) {
+      // Wrap transport errors in ConnectionError for consistent error types
+      const connectionError = this.#transport.error instanceof ConnectionError
+        ? this.#transport.error
+        : new ConnectionError(
+            this.#transport.error instanceof Error
+              ? this.#transport.error.message
+              : String(this.#transport.error)
+          );
+      this.abort(connectionError, false);
+      return;
+    }
+
     let msgText: string;
     try {
       msgText = JSON.stringify(msg);
@@ -789,8 +824,31 @@ class RpcSessionImpl implements Importer, Exporter, ImportExportSession {
         });
   }
 
-  sendCall(id: ImportId, path: PropertyPath, args?: RpcPayload, callTimeoutMs?: number): StubHook {
+  /**
+   * Throws if the session is aborted or the transport has an error.
+   * This provides a synchronous check for abort/error status.
+   */
+  throwIfAborted(): void {
     if (this.#abortReason) throw this.#abortReason;
+
+    // Check for transport error synchronously to prevent race conditions
+    if (this.#transport.error !== undefined) {
+      // Preserve any CapnwebError subclass (SerializationError, etc.)
+      // Only wrap raw errors in ConnectionError for transport failures
+      const error = this.#transport.error instanceof CapnwebError
+        ? this.#transport.error
+        : new ConnectionError(
+            this.#transport.error instanceof Error
+              ? this.#transport.error.message
+              : String(this.#transport.error)
+          );
+      this.abort(error, false);
+      throw this.#abortReason;
+    }
+  }
+
+  sendCall(id: ImportId, path: PropertyPath, args?: RpcPayload, callTimeoutMs?: number): StubHook {
+    this.throwIfAborted();
 
     // Check backpressure limit before making the call
     const decrementPendingResult = this.#incrementPendingCall();
@@ -1094,8 +1152,20 @@ class RpcSessionImpl implements Importer, Exporter, ImportExportSession {
         Promise.resolve(err);
       }
     }
+
+    // Wrap the error in ConnectionError for pending imports if it's not already one.
+    // This ensures callers receive a consistent ConnectionError type when the connection breaks.
+    let importAbortError: unknown;
+    if (error instanceof ConnectionError) {
+      importAbortError = error;
+    } else if (error instanceof Error) {
+      importAbortError = new ConnectionError(error.message);
+    } else {
+      importAbortError = new ConnectionError(String(error));
+    }
+
     for (let i in this.#imports) {
-      this.#imports[i].abort(error);
+      this.#imports[i].abort(importAbortError);
     }
     for (let i in this.#exports) {
       this.#exports[i].hook.dispose();
@@ -1290,12 +1360,28 @@ class RpcSessionImpl implements Importer, Exporter, ImportExportSession {
 
 // Public interface that wraps RpcSession and hides private implementation details (even from
 // JavaScript with no type enforcement).
-export class RpcSession {
+export class RpcSession<T = unknown> {
   #session: RpcSessionImpl;
   #mainStub: RpcStub;
+  #options: RpcSessionOptions;
+  #transport: RpcTransport;
+  #localMain: unknown;
+  #isInitiator: boolean;
+
+  // Reconnection state
+  #state: SessionState = "active";
+  #sessionId?: string;
+  #reconnectAttempt: number = 0;
+  #reconnectCancelled: boolean = false;
 
   constructor(transport: RpcTransport, localMain?: unknown, options: RpcSessionOptions = {},
               isInitiator: boolean = true) {
+    this.#options = options;
+    this.#transport = transport;
+    this.#localMain = localMain;
+    this.#isInitiator = isInitiator;
+    this.#sessionId = options.sessionId;
+
     let mainHook: StubHook;
     if (localMain) {
       mainHook = new PayloadStubHook(RpcPayload.fromAppReturn(localMain));
@@ -1304,6 +1390,111 @@ export class RpcSession {
     }
     this.#session = new RpcSessionImpl(transport, mainHook, options, isInitiator);
     this.#mainStub = new RpcStub(this.#session.getMainImport());
+
+    // Set up reconnection handling
+    this.#setupReconnectionHandler();
+  }
+
+  #setupReconnectionHandler(): void {
+    // Listen for session close and trigger reconnection if configured
+    this.#session.onClosed().then(error => {
+      if (this.#reconnectCancelled) {
+        return;
+      }
+      if (this.#state === "closed") {
+        return;
+      }
+      if (error && this.#options.reconnect) {
+        this.#handleDisconnect(error);
+      } else {
+        this.#setState("closed");
+      }
+    });
+  }
+
+  async #handleDisconnect(error: Error): Promise<void> {
+    if (this.#state === "closed" || this.#reconnectCancelled) {
+      return;
+    }
+
+    this.#setState("reconnecting");
+    this.#options.onReconnecting?.(error);
+
+    const strategy = this.#options.reconnectionStrategy ?? {};
+    const maxAttempts = strategy.maxAttempts ?? 3;
+    const initialDelay = strategy.initialDelay ?? 100;
+    const maxDelay = strategy.maxDelay ?? 30000;
+    const backoffMultiplier = strategy.backoffMultiplier ?? 2;
+    const jitter = strategy.jitter ?? 0;
+
+    let attempt = 0;
+    let delay = initialDelay;
+
+    while (!this.#reconnectCancelled) {
+      attempt++;
+      this.#reconnectAttempt = attempt;
+
+      let actualDelay = delay;
+      if (jitter > 0) {
+        const jitterAmount = delay * jitter;
+        actualDelay = delay + (Math.random() * 2 - 1) * jitterAmount;
+        actualDelay = Math.max(0, actualDelay);
+      }
+
+      if (attempt > 1) {
+        await new Promise(resolve => setTimeout(resolve, actualDelay));
+      }
+
+      if (this.#reconnectCancelled) {
+        break;
+      }
+
+      try {
+        const newTransport = await this.#options.reconnect!(attempt, error);
+
+        if (this.#reconnectCancelled) {
+          break;
+        }
+
+        if (newTransport === null) {
+          this.#setState("closed");
+          return;
+        }
+
+        this.#transport = newTransport;
+        let mainHook: StubHook;
+        if (this.#localMain) {
+          mainHook = new PayloadStubHook(RpcPayload.fromAppReturn(this.#localMain));
+        } else {
+          mainHook = new ErrorStubHook(new Error("This connection has no main object."));
+        }
+        this.#session = new RpcSessionImpl(newTransport, mainHook, this.#options, this.#isInitiator);
+        this.#mainStub = new RpcStub(this.#session.getMainImport());
+
+        this.#setupReconnectionHandler();
+
+        this.#setState("active");
+        this.#options.onReconnected?.(attempt);
+        this.#reconnectAttempt = 0;
+
+        return;
+      } catch (reconnectError) {
+        if (maxAttempts > 0 && attempt >= maxAttempts) {
+          this.#setState("closed");
+          return;
+        }
+        delay = Math.min(delay * backoffMultiplier, maxDelay);
+      }
+    }
+
+    this.#setState("closed");
+  }
+
+  #setState(newState: SessionState): void {
+    if (this.#state !== newState) {
+      this.#state = newState;
+      this.#options.onStateChange?.(newState);
+    }
   }
 
   getRemoteMain(): RpcStub {
@@ -1346,6 +1537,8 @@ export class RpcSession {
    * @param reason Optional error to propagate as the close reason
    */
   close(reason?: Error): void {
+    this.#reconnectCancelled = true;
+    this.#setState("closed");
     this.#session.close(reason);
   }
 
@@ -1362,6 +1555,24 @@ export class RpcSession {
    */
   get isClosed(): boolean {
     return this.#session.getIsClosed();
+  }
+
+  // ==========================================================================
+  // Session state methods
+  // ==========================================================================
+
+  /**
+   * Get the current session state.
+   */
+  getState(): SessionState {
+    return this.#state;
+  }
+
+  /**
+   * Get the session ID if one was configured.
+   */
+  getSessionId(): string | undefined {
+    return this.#sessionId;
   }
 
   // ==========================================================================

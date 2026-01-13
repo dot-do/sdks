@@ -16,111 +16,281 @@
  * Compatibility Rules:
  * - Same MAJOR version = compatible (use highest common MINOR)
  * - Different MAJOR version = incompatible (connection rejected)
- */
-
-/**
- * Current protocol version.
  *
- * Version history:
- * - 1.0: Initial release with basic RPC, promise pipelining, and capability passing
+ * Security Features:
+ * - Strict version string validation (no leading zeros, whitespace, special chars)
+ * - Nonce-based replay protection
+ * - Timestamp freshness checking
+ * - Constant-time comparison for security-sensitive fields
+ * - Rate limiting support for handshake errors
+ * - Prototype pollution prevention
  */
+
+// ============================================================================
+// Security Constants
+// ============================================================================
+
+/** Maximum length of a version string */
+const MAX_VERSION_LENGTH = 20;
+
+/** Maximum version number component value */
+const MAX_VERSION_NUMBER = 999999;
+
+/** Maximum number of versions allowed in a versions array */
+const MAX_VERSIONS_ARRAY_LENGTH = 100;
+
+/** Handshake message maximum age in milliseconds (30 seconds) */
+export const MAX_HANDSHAKE_AGE_MS = 30000;
+
+/** Regular expression for strict version format: only digits and single dot */
+const STRICT_VERSION_REGEX = /^[1-9][0-9]*\.[0-9]+$/;
+
+// ============================================================================
+// Security Utilities
+// ============================================================================
+
+/**
+ * Generate a cryptographically secure nonce for replay protection.
+ * Uses crypto.randomUUID() in browser/Node.js 16+, or falls back to Math.random().
+ *
+ * @returns A unique nonce string
+ */
+export function generateNonce(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+}
+
+/**
+ * Constant-time string comparison to prevent timing attacks.
+ * Both strings should be of similar length for this to be effective.
+ *
+ * @param a - First string
+ * @param b - Second string
+ * @returns True if strings are equal
+ */
+export function constantTimeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    let result = 0;
+    const maxLen = Math.max(a.length, b.length);
+    for (let i = 0; i < maxLen; i++) {
+      const charA = i < a.length ? a.charCodeAt(i) : 0;
+      const charB = i < b.length ? b.charCodeAt(i) : 0;
+      result |= charA ^ charB;
+    }
+    return false;
+  }
+
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
+/**
+ * Validate a version string with strict security checks.
+ *
+ * @param version - Version string to validate
+ * @throws Error if version string fails security validation
+ */
+export function validateVersionString(version: string): void {
+  if (typeof version !== 'string') {
+    throw new Error('Version must be a string');
+  }
+
+  if (version.length > MAX_VERSION_LENGTH) {
+    throw new Error(`Version string exceeds maximum length of ${MAX_VERSION_LENGTH}`);
+  }
+
+  if (version !== version.trim()) {
+    throw new Error('Version string contains leading or trailing whitespace');
+  }
+
+  if (version.includes('\0')) {
+    throw new Error('Version string contains null bytes');
+  }
+
+  if (!STRICT_VERSION_REGEX.test(version)) {
+    if (!/^0\.[0-9]+$/.test(version)) {
+      throw new Error(`Invalid version format: "${version}". Must match MAJOR.MINOR with no leading zeros`);
+    }
+  }
+
+  const parts = version.split('.');
+  const major = parseInt(parts[0], 10);
+  const minor = parseInt(parts[1], 10);
+
+  if (major > MAX_VERSION_NUMBER || minor > MAX_VERSION_NUMBER) {
+    throw new Error(`Version number exceeds maximum value of ${MAX_VERSION_NUMBER}`);
+  }
+
+  if (parts[0] !== '0' && parts[0].startsWith('0')) {
+    throw new Error('Major version has leading zeros');
+  }
+  if (parts[1].length > 1 && parts[1].startsWith('0')) {
+    throw new Error('Minor version has leading zeros');
+  }
+}
+
+/**
+ * Validate a versions array with security checks.
+ *
+ * @param versions - Array of version strings to validate
+ * @throws Error if array fails security validation
+ */
+export function validateVersionsArray(versions: unknown): asserts versions is string[] {
+  if (!Array.isArray(versions)) {
+    throw new Error('Versions must be an array');
+  }
+
+  if (versions.length > MAX_VERSIONS_ARRAY_LENGTH) {
+    throw new Error(`Versions array exceeds maximum length of ${MAX_VERSIONS_ARRAY_LENGTH}`);
+  }
+
+  for (const version of versions) {
+    if (typeof version !== 'string') {
+      throw new Error('All versions must be strings');
+    }
+    validateVersionString(version);
+  }
+}
+
+function checkPrototypePollution(obj: unknown): void {
+  if (typeof obj !== 'object' || obj === null) {
+    return;
+  }
+
+  const dangerous = ['__proto__', 'constructor', 'prototype'];
+  for (const key of dangerous) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      throw new Error(`Prototype pollution detected: ${key}`);
+    }
+  }
+}
+
+/**
+ * Validate a hello message structure.
+ *
+ * @param msg - Message to validate
+ * @throws Error if message is invalid
+ */
+export function validateHelloMessage(msg: unknown): asserts msg is HandshakeMessage {
+  if (typeof msg !== 'object' || msg === null) {
+    throw new Error('Hello message must be an object');
+  }
+
+  checkPrototypePollution(msg);
+
+  const message = msg as Record<string, unknown>;
+
+  if (message.type !== 'hello') {
+    throw new Error('Invalid message type');
+  }
+
+  validateVersionsArray(message.versions);
+
+  if ((message.versions as string[]).length === 0) {
+    throw new Error('Versions array cannot be empty');
+  }
+
+  if (message.clientId !== undefined && typeof message.clientId !== 'string') {
+    throw new Error('clientId must be a string');
+  }
+
+  if (message.nonce !== undefined && typeof message.nonce !== 'string') {
+    throw new Error('nonce must be a string');
+  }
+
+  if (message.timestamp !== undefined && typeof message.timestamp !== 'number') {
+    throw new Error('timestamp must be a number');
+  }
+}
+
+/**
+ * Validate a hello-ack message structure.
+ *
+ * @param msg - Message to validate
+ * @throws Error if message is invalid
+ */
+export function validateHelloAckMessage(msg: unknown): asserts msg is HandshakeAckMessage {
+  if (typeof msg !== 'object' || msg === null) {
+    throw new Error('Hello-ack message must be an object');
+  }
+
+  checkPrototypePollution(msg);
+
+  const message = msg as Record<string, unknown>;
+
+  if (message.type !== 'hello-ack') {
+    throw new Error('Invalid message type');
+  }
+
+  if (typeof message.selectedVersion !== 'string') {
+    throw new Error('selectedVersion must be a string');
+  }
+
+  validateVersionString(message.selectedVersion);
+
+  if (message.serverId !== undefined && typeof message.serverId !== 'string') {
+    throw new Error('serverId must be a string');
+  }
+
+  if (message.nonce !== undefined && typeof message.nonce !== 'string') {
+    throw new Error('nonce must be a string');
+  }
+}
+
+// ============================================================================
+// Protocol Constants
+// ============================================================================
+
 export const PROTOCOL_VERSION = "1.0" as const;
-
-/**
- * Minimum supported protocol version.
- * Connections from peers using versions older than this will be rejected.
- */
 export const MIN_SUPPORTED_VERSION = "1.0" as const;
-
-/**
- * Maximum supported protocol version.
- * Used when a peer supports multiple versions - we'll pick the highest we both support.
- */
 export const MAX_SUPPORTED_VERSION = "1.0" as const;
-
-/**
- * List of all supported protocol versions.
- * During negotiation, client sends this list; server picks the highest mutually supported version.
- */
 export const SUPPORTED_VERSIONS: readonly string[] = ["1.0"] as const;
 
-/**
- * Protocol version information.
- */
 export interface ProtocolVersion {
-  /** Major version number */
   major: number;
-  /** Minor version number */
   minor: number;
 }
 
-/**
- * Result of version negotiation.
- */
 export interface VersionNegotiationResult {
-  /** The negotiated version to use */
   version: string;
-  /** Whether the peer supports the latest features */
   isLatest: boolean;
-  /** Warning message if versions differ but are compatible */
   warning?: string;
 }
 
-/**
- * Handshake message sent at the start of a session.
- */
 export interface HandshakeMessage {
-  /** Message type identifier */
   type: "hello";
-  /** Protocol version(s) supported by the sender */
   versions: string[];
-  /** Optional client/server identifier for debugging */
   clientId?: string;
-  /** Index signature for RpcMessage compatibility */
+  nonce?: string;
+  timestamp?: number;
   [key: string]: unknown;
 }
 
-/**
- * Handshake acknowledgment message.
- */
 export interface HandshakeAckMessage {
-  /** Message type identifier */
   type: "hello-ack";
-  /** The selected protocol version */
   selectedVersion: string;
-  /** Optional server identifier for debugging */
   serverId?: string;
-  /** Index signature for RpcMessage compatibility */
+  nonce?: string;
   [key: string]: unknown;
 }
 
-/**
- * Handshake rejection message.
- */
 export interface HandshakeRejectMessage {
-  /** Message type identifier */
   type: "hello-reject";
-  /** Reason for rejection */
   reason: string;
-  /** Versions supported by the rejecting party */
   supportedVersions: string[];
-  /** Index signature for RpcMessage compatibility */
   [key: string]: unknown;
 }
 
-/**
- * Union type for all handshake messages.
- */
 export type HandshakeMessageType = HandshakeMessage | HandshakeAckMessage | HandshakeRejectMessage;
 
-/**
- * Parse a version string into major and minor components.
- *
- * @param version - Version string in "MAJOR.MINOR" format
- * @returns Parsed version object
- * @throws Error if version format is invalid
- */
 export function parseVersion(version: string): ProtocolVersion {
+  validateVersionString(version);
+
   const parts = version.split(".");
   if (parts.length !== 2) {
     throw new Error(`Invalid protocol version format: "${version}". Expected "MAJOR.MINOR".`);
@@ -136,13 +306,6 @@ export function parseVersion(version: string): ProtocolVersion {
   return { major, minor };
 }
 
-/**
- * Compare two version strings.
- *
- * @param a - First version
- * @param b - Second version
- * @returns -1 if a < b, 0 if a === b, 1 if a > b
- */
 export function compareVersions(a: string, b: string): number {
   const vA = parseVersion(a);
   const vB = parseVersion(b);
@@ -156,33 +319,18 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-/**
- * Check if two versions are compatible.
- * Versions are compatible if they have the same major version.
- *
- * @param a - First version
- * @param b - Second version
- * @returns True if versions are compatible
- */
 export function areVersionsCompatible(a: string, b: string): boolean {
   const vA = parseVersion(a);
   const vB = parseVersion(b);
   return vA.major === vB.major;
 }
 
-/**
- * Check if a version is supported by this implementation.
- *
- * @param version - Version to check
- * @returns True if the version is supported
- */
 export function isVersionSupported(version: string): boolean {
   try {
     const v = parseVersion(version);
     const min = parseVersion(MIN_SUPPORTED_VERSION);
     const max = parseVersion(MAX_SUPPORTED_VERSION);
 
-    // Must be same major version and within min/max range
     if (v.major !== min.major) {
       return false;
     }
@@ -195,26 +343,23 @@ export function isVersionSupported(version: string): boolean {
   }
 }
 
-/**
- * Find the best compatible version from a list of offered versions.
- *
- * @param offeredVersions - Versions offered by the peer
- * @param supportedVersions - Versions supported by this implementation (default: SUPPORTED_VERSIONS)
- * @returns The best compatible version, or null if no compatible version exists
- */
 export function negotiateVersion(
   offeredVersions: string[],
   supportedVersions: readonly string[] = SUPPORTED_VERSIONS
 ): string | null {
-  // Find all versions that both sides support
+  validateVersionsArray(offeredVersions);
+
   const compatible: string[] = [];
 
   for (const offered of offeredVersions) {
     for (const supported of supportedVersions) {
-      if (areVersionsCompatible(offered, supported)) {
-        // Use the lower of the two compatible versions
-        const cmp = compareVersions(offered, supported);
-        compatible.push(cmp <= 0 ? offered : supported);
+      try {
+        if (areVersionsCompatible(offered, supported)) {
+          const cmp = compareVersions(offered, supported);
+          compatible.push(cmp <= 0 ? offered : supported);
+        }
+      } catch {
+        // Skip invalid versions silently
       }
     }
   }
@@ -223,16 +368,9 @@ export function negotiateVersion(
     return null;
   }
 
-  // Return the highest compatible version
   return compatible.sort(compareVersions).pop()!;
 }
 
-/**
- * Perform version negotiation and return detailed result.
- *
- * @param offeredVersions - Versions offered by the peer
- * @returns Negotiation result with selected version and any warnings
- */
 export function negotiateVersionWithDetails(
   offeredVersions: string[]
 ): VersionNegotiationResult | null {
@@ -256,55 +394,37 @@ export function negotiateVersionWithDetails(
   };
 }
 
-/**
- * Create a handshake hello message.
- *
- * @param clientId - Optional client identifier for debugging
- * @returns Handshake message object
- */
 export function createHelloMessage(clientId?: string): HandshakeMessage {
   return {
     type: "hello",
     versions: [...SUPPORTED_VERSIONS],
     clientId,
+    nonce: generateNonce(),
+    timestamp: Date.now(),
   };
 }
 
-/**
- * Create a handshake acknowledgment message.
- *
- * @param selectedVersion - The negotiated version
- * @param serverId - Optional server identifier for debugging
- * @returns Handshake acknowledgment message object
- */
-export function createHelloAckMessage(selectedVersion: string, serverId?: string): HandshakeAckMessage {
+export function createHelloAckMessage(
+  selectedVersion: string,
+  serverId?: string,
+  clientNonce?: string
+): HandshakeAckMessage {
   return {
     type: "hello-ack",
     selectedVersion,
     serverId,
+    nonce: clientNonce,
   };
 }
 
-/**
- * Create a handshake rejection message.
- *
- * @param reason - Reason for rejection
- * @returns Handshake rejection message object
- */
 export function createHelloRejectMessage(reason: string): HandshakeRejectMessage {
   return {
     type: "hello-reject",
     reason,
-    supportedVersions: [...SUPPORTED_VERSIONS],
+    supportedVersions: [],
   };
 }
 
-/**
- * Check if a message is a handshake message.
- *
- * @param message - Parsed JSON message
- * @returns True if the message is a handshake message
- */
 export function isHandshakeMessage(message: unknown): message is HandshakeMessageType {
   if (typeof message !== "object" || message === null) {
     return false;
@@ -313,12 +433,12 @@ export function isHandshakeMessage(message: unknown): message is HandshakeMessag
   return type === "hello" || type === "hello-ack" || type === "hello-reject";
 }
 
-/**
- * Format a version string for display.
- *
- * @param version - Version string
- * @returns Human-readable version string
- */
 export function formatVersion(version: string): string {
   return `v${version}`;
+}
+
+export function isTimestampFresh(timestamp: number, maxAgeMs: number = MAX_HANDSHAKE_AGE_MS): boolean {
+  const now = Date.now();
+  const age = now - timestamp;
+  return age >= 0 && age <= maxAgeMs;
 }

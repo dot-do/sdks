@@ -27,6 +27,8 @@ export type {
   RpcTransport,
   RpcSessionOptions,
   RpcMessage,
+  SessionState,
+  ReconnectionStrategy,
 } from "./session.js";
 
 export { RpcSession } from "./session.js";

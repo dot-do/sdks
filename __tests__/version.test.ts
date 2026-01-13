@@ -52,16 +52,16 @@ describe('parseVersion', () => {
   });
 
   it('should throw on invalid format', () => {
-    expect(() => parseVersion('1')).toThrow('Invalid protocol version format');
-    expect(() => parseVersion('1.2.3')).toThrow('Invalid protocol version format');
-    expect(() => parseVersion('')).toThrow('Invalid protocol version format');
-    expect(() => parseVersion('v1.0')).toThrow('Invalid protocol version numbers');
+    expect(() => parseVersion('1')).toThrow(/Invalid version format/);
+    expect(() => parseVersion('1.2.3')).toThrow(/Invalid version format/);
+    expect(() => parseVersion('')).toThrow(/Invalid version format/);
+    expect(() => parseVersion('v1.0')).toThrow(/Invalid version format/);
   });
 
   it('should throw on invalid numbers', () => {
-    expect(() => parseVersion('a.b')).toThrow('Invalid protocol version numbers');
-    expect(() => parseVersion('-1.0')).toThrow('Invalid protocol version numbers');
-    expect(() => parseVersion('1.-1')).toThrow('Invalid protocol version numbers');
+    expect(() => parseVersion('a.b')).toThrow(/Invalid version format/);
+    expect(() => parseVersion('-1.0')).toThrow(/Invalid version format/);
+    expect(() => parseVersion('1.-1')).toThrow(/Invalid version format/);
   });
 });
 
@@ -188,7 +188,8 @@ describe('Handshake Message Creation', () => {
       const msg = createHelloRejectMessage('Version mismatch');
       expect(msg.type).toBe('hello-reject');
       expect(msg.reason).toBe('Version mismatch');
-      expect(msg.supportedVersions).toEqual([...SUPPORTED_VERSIONS]);
+      // Security: supportedVersions is empty to prevent version enumeration attacks
+      expect(msg.supportedVersions).toEqual([]);
     });
   });
 });

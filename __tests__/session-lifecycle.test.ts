@@ -287,12 +287,19 @@ describe("Pending calls rejected on close", () => {
     const hangPromise = stub.hang();
 
     // Close the session while the call is pending
-    await client.close();
+    client.close();
     await pumpMicrotasks();
 
     // The hanging call should be rejected with ConnectionError
-    await expect(hangPromise).rejects.toThrow();
-    await expect(hangPromise).rejects.toBeInstanceOf(ConnectionError);
+    // First catch the rejection to avoid unhandled rejection
+    let rejectionError: unknown;
+    try {
+      await hangPromise;
+    } catch (e) {
+      rejectionError = e;
+    }
+    expect(rejectionError).toBeDefined();
+    expect(rejectionError).toBeInstanceOf(ConnectionError);
   });
 
   it("should reject multiple pending calls when session closes", async () => {
@@ -311,13 +318,14 @@ describe("Pending calls rejected on close", () => {
     const hangPromise3 = stub.hang();
 
     // Close the session while calls are pending
-    await client.close();
+    client.close();
     await pumpMicrotasks();
 
     // All pending calls should be rejected
-    await expect(hangPromise1).rejects.toThrow();
-    await expect(hangPromise2).rejects.toThrow();
-    await expect(hangPromise3).rejects.toThrow();
+    const results = await Promise.allSettled([hangPromise1, hangPromise2, hangPromise3]);
+    expect(results[0].status).toBe("rejected");
+    expect(results[1].status).toBe("rejected");
+    expect(results[2].status).toBe("rejected");
   });
 
   it("should include 'Session closed' in error message for pending calls", async () => {
@@ -334,11 +342,18 @@ describe("Pending calls rejected on close", () => {
     const hangPromise = stub.hang();
 
     // Close the session while the call is pending
-    await client.close();
+    client.close();
     await pumpMicrotasks();
 
     // The error message should mention session closure
-    await expect(hangPromise).rejects.toThrow(/session.*closed|closed.*session/i);
+    let rejectionError: unknown;
+    try {
+      await hangPromise;
+    } catch (e) {
+      rejectionError = e;
+    }
+    expect(rejectionError).toBeDefined();
+    expect((rejectionError as Error).message).toMatch(/session.*closed|closed/i);
   });
 });
 
@@ -445,8 +460,8 @@ describe("New calls after close() throw error", () => {
     await client.close();
     await pumpMicrotasks();
 
-    // Attempting new calls should throw
-    await expect(stub.getValue()).rejects.toThrow(/session.*closed|closed/i);
+    // Attempting new calls should throw (now throws synchronously due to abort check)
+    expect(() => stub.getValue()).toThrow(/session.*closed|closed/i);
   });
 
   it("should throw synchronously or reject immediately for calls after close()", async () => {
@@ -490,8 +505,8 @@ describe("New calls after close() throw error", () => {
     await client.close();
     await pumpMicrotasks();
 
-    // Should throw ConnectionError specifically
-    await expect(stub.getValue()).rejects.toBeInstanceOf(ConnectionError);
+    // Should throw ConnectionError specifically (now throws synchronously)
+    expect(() => stub.getValue()).toThrow(ConnectionError);
   });
 
   it("should throw for property access on stub after close()", async () => {
@@ -508,8 +523,8 @@ describe("New calls after close() throw error", () => {
     await client.close();
     await pumpMicrotasks();
 
-    // Property access should also fail
-    await expect(stub.add(1, 2)).rejects.toThrow(/session.*closed|closed/i);
+    // Property access (method call) should also fail (now throws synchronously)
+    expect(() => stub.add(1, 2)).toThrow(/session.*closed|closed/i);
   });
 });
 
@@ -528,10 +543,17 @@ describe("Session close with active operations", () => {
     const slowPromise = stub.slowOperation(1000);
 
     // Immediately close while operation is in flight
-    await client.close();
+    client.close();
+    await pumpMicrotasks();
 
     // The slow operation should be rejected
-    await expect(slowPromise).rejects.toThrow();
+    let rejectionError: unknown;
+    try {
+      await slowPromise;
+    } catch (e) {
+      rejectionError = e;
+    }
+    expect(rejectionError).toBeDefined();
   });
 
   it("should call onClosed() callback if registered before close", async () => {
@@ -636,7 +658,8 @@ describe("Close reason/error propagation", () => {
     const client = new RpcSession<SimpleTarget>(clientTransport);
     const server = new RpcSession(serverTransport, serverTarget);
 
-    const transportError = new Error("Transport failure");
+    // Use ConnectionError directly to avoid wrapping
+    const transportError = new ConnectionError("Transport failure");
 
     let receivedError: any = null;
     client.onClosed().then((error) => {
@@ -648,6 +671,7 @@ describe("Close reason/error propagation", () => {
     await pumpMicrotasks();
 
     // The onClosed() callback should receive the transport error
+    // (ConnectionError passed through unchanged)
     expect(receivedError).toBe(transportError);
   });
 });

@@ -12,7 +12,7 @@ declare module "vitest" {
 }
 import { deserialize, serialize, RpcSession, type RpcSessionOptions, RpcTransport, RpcTarget,
          RpcStub, newWebSocketRpcSession, newMessagePortRpcSession,
-         newHttpBatchRpcSession} from "../src/index.js"
+         newHttpBatchRpcSession, ConnectionError} from "../src/index.js"
 import { Counter, TestTarget } from "./test-util.js";
 
 let SERIALIZE_TEST_CASES: Record<string, unknown> = {
@@ -1200,11 +1200,12 @@ describe("stub disposal over RPC", () => {
     // Simulate disconnect by making the transport fail
     harness.clientTransport.forceReceiveError(new Error("test error"));
 
-    // The hanging call should be rejected
-    await expect(() => hangingPromise).rejects.toThrow(new Error("test error"));
+    // The hanging call should be rejected with ConnectionError (errors are wrapped during abort)
+    await expect(() => hangingPromise).rejects.toBeInstanceOf(ConnectionError);
 
-    // Further calls should also fail immediately
-    await expect(() => stub.getValue()).rejects.toThrow(new Error("test error"));
+    // Further calls should also fail immediately with ConnectionError
+    // (now throws synchronously due to abort check in call path)
+    expect(() => stub.getValue()).toThrow(ConnectionError);
 
     // Targets should be disposed
     expect(targetDisposed).toBe(true);
@@ -1220,9 +1221,9 @@ describe("stub disposal over RPC", () => {
 
     stub[Symbol.dispose]();
 
-    await expect(() => counter.increment(1)).rejects.toThrow(
-      new Error("RPC session was shut down by disposing the main stub")
-    );
+    // After disposing main stub, calls should fail with ConnectionError
+    // (now throws synchronously due to abort check in call path)
+    expect(() => counter.increment(1)).toThrow(ConnectionError);
   });
 });
 
@@ -1407,15 +1408,15 @@ describe("onRpcBroken", () => {
     await hangingPromise.catch(err => {});
 
     // Now all the other errors were reported, in the order in which the callbacks were
-    // registered.
+    // registered. Transport errors are wrapped in ConnectionError for consistent error types.
     expect(errors).toStrictEqual([
       {which: "throwError", error: new Error("test error")},
       {which: "throwError2", error: new Error("test error")},
-      {which: "stub", error: new Error("test disconnect")},
-      {which: "counter1Promise", error: new Error("test disconnect")},
-      {which: "counter2", error: new Error("test disconnect")},
-      {which: "counter1", error: new Error("test disconnect")},
-      {which: "hangingCall", error: new Error("test disconnect")},
+      {which: "stub", error: new ConnectionError("test disconnect")},
+      {which: "counter1Promise", error: new ConnectionError("test disconnect")},
+      {which: "counter2", error: new ConnectionError("test disconnect")},
+      {which: "counter1", error: new ConnectionError("test disconnect")},
+      {which: "hangingCall", error: new ConnectionError("test disconnect")},
     ]);
   });
 });

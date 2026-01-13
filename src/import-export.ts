@@ -18,6 +18,9 @@ export interface ImportExportSession {
   // Callbacks that fire when the connection is broken
   onBrokenCallbacks: ((error: unknown) => void)[];
 
+  // Throws if the session is aborted (synchronous check for abort/transport error)
+  throwIfAborted(): void;
+
   // Send a pull message to request resolution of a promise
   sendPull(importId: ImportId): void;
 
@@ -227,6 +230,11 @@ export class ImportTableEntry {
   }
 
   async awaitResolution(): Promise<RpcPayload> {
+    // If already resolved (including abort/error cases), return immediately
+    if (this.resolution) {
+      return this.resolution.pull();
+    }
+
     if (!this.#activePull) {
       this.session.sendPull(this.importId);
       this.#activePull = Promise.withResolvers<void>();
@@ -337,6 +345,10 @@ export class RpcImportHook extends StubHook {
 
   call(path: PropertyPath, args: RpcPayload): StubHook {
     let entry = this.getEntry();
+    // Always check abort status first, even if we have a resolution.
+    // This ensures consistent synchronous error behavior.
+    entry.session.throwIfAborted();
+
     if (entry.resolution) {
       return entry.resolution.call(path, args);
     } else {

@@ -266,8 +266,8 @@ describe("Edge cases - Calling methods on closed connection", () => {
     clientTransport.close();
     await pumpMicrotasks();
 
-    // Further calls should fail
-    await expect(() => stub.getValue()).rejects.toThrow();
+    // Further calls should fail (now throws synchronously due to abort check)
+    expect(() => stub.getValue()).toThrow();
   });
 
   it("should reject pending calls when connection is lost", async () => {
